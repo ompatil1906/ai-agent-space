@@ -1,7 +1,8 @@
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func, case
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user
@@ -11,25 +12,73 @@ from app.schemas import AgentPublic, AgentRatingCreate, AgentRatingPublic, Agent
 router = APIRouter()
 
 
-@router.get("/agents", response_model=List[AgentPublic])
+@router.get("/agents", response_model=List[AgentWithRating])
 def list_published_agents(
     db: Session = Depends(get_db),
     skip: int = 0,
     limit: int = 50,
     search: Optional[str] = None,
+    min_rating: Optional[float] = Query(None, ge=0, le=5),
+    price_filter: Optional[str] = Query(None, regex="^(free|paid|all)$"),
+    sort_by: Optional[str] = Query("created", regex="^(rating|price|name|created)$"),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    """Browse published agents in the marketplace."""
-    query = db.query(Agent).filter(Agent.is_published == True, Agent.is_public == True)
+    """Browse published agents in the marketplace with ratings, filters, and sorting."""
+    # Subquery for rating aggregates
+    rating_subq = (
+        db.query(
+            AgentRating.agent_id,
+            func.avg(AgentRating.rating).label("avg_rating"),
+            func.count(AgentRating.id).label("rating_count"),
+        )
+        .group_by(AgentRating.agent_id)
+        .subquery()
+    )
+
+    query = (
+        db.query(
+            Agent,
+            rating_subq.c.avg_rating,
+            rating_subq.c.rating_count,
+        )
+        .outerjoin(rating_subq, Agent.id == rating_subq.c.agent_id)
+        .filter(Agent.is_published == True, Agent.is_public == True)
+    )
+
     if search:
-        query = query.filter(Agent.name.ilike(f"%{search}%") | Agent.description.ilike(f"%{search}%"))
-    agents = query.offset(skip).limit(limit).all()
-    # Attach owner email for display
+        query = query.filter(
+            Agent.name.ilike(f"%{search}%") | Agent.description.ilike(f"%{search}%")
+        )
+
+    if price_filter == "free":
+        query = query.filter(Agent.price == 0)
+    elif price_filter == "paid":
+        query = query.filter(Agent.price > 0)
+
+    if min_rating is not None:
+        query = query.filter(
+            (rating_subq.c.avg_rating >= min_rating) | (rating_subq.c.avg_rating.is_(None))
+        )
+
+    # Sorting
+    if sort_by == "rating":
+        query = query.order_by(rating_subq.c.avg_rating.desc().nullslast(), Agent.created_at.desc())
+    elif sort_by == "price":
+        query = query.order_by(Agent.price.asc())
+    elif sort_by == "name":
+        query = query.order_by(Agent.name.asc())
+    else:  # created
+        query = query.order_by(Agent.created_at.desc())
+
+    results = query.offset(skip).limit(limit).all()
+
     result = []
-    for a in agents:
-        data = AgentPublic.model_validate(a)
-        if a.owner:
-            data.owner_email = a.owner.email
+    for agent, avg_rating, rating_count in results:
+        data = AgentWithRating.model_validate(agent)
+        if agent.owner:
+            data.owner_email = agent.owner.email
+        data.average_rating = float(avg_rating) if avg_rating is not None else None
+        data.rating_count = rating_count or 0
         result.append(data)
     return result
 

@@ -48,6 +48,7 @@ Open http://localhost:3000
 - Checkpointer: MemorySaver (dev) / PostgresSaver (prod)
 
 ## Recent Updates
+- Marketplace UI: ratings display (stars + avg + count), advanced filters (min rating, free/paid, sort by rating/price/name), and in-place rating modal
 - Added **parallel multi-agent** workflow (concurrent specialists + synthesizer)
 - Improved supervisor routing reliability with structured decision format
 - Added marketplace **ratings** (1-5 stars + reviews, summary endpoint)
@@ -58,7 +59,7 @@ Open http://localhost:3000
 - Enhanced Agent Runner UI: live token streaming, tool call / tool result visualization, optional thread_id for conversation memory, conversation history list with one-click thread resume
 
 ## Next Priorities
-1. Ratings display in marketplace UI + advanced marketplace filters
+1. ~~Ratings display in marketplace UI + advanced marketplace filters~~ (Done: stars, avg, count, min-rating / price / sort filters + rate modal)
 2. Evaluation dashboard and batch evaluation harness
 3. Agent editing UI with version restore in builder
 4. Richer parallel patterns (map-reduce, debate) and structured outputs for supervisor
