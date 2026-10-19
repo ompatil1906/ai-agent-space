@@ -42,6 +42,12 @@ class Agent(Base):
 
     owner = relationship("User", back_populates="agents")
     runs = relationship("AgentRun", back_populates="agent", cascade="all, delete-orphan")
+    versions = relationship(
+        "AgentVersion",
+        back_populates="agent",
+        cascade="all, delete-orphan",
+        order_by="AgentVersion.version_number.desc()",
+    )
 
 
 class AgentRun(Base):
@@ -60,3 +66,25 @@ class AgentRun(Base):
 
     agent = relationship("Agent", back_populates="runs")
     user = relationship("User", back_populates="runs")
+
+
+class AgentVersion(Base):
+    __tablename__ = "agent_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    system_prompt = Column(Text, nullable=False)
+    model_name = Column(String)
+    temperature = Column(Float)
+    tools_config = Column(JSON, default=list)
+    memory_config = Column(JSON, default=dict)
+    workflow_config = Column(JSON, default=dict)
+    snapshot = Column(JSON)  # full snapshot for easy restore
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    change_note = Column(String, nullable=True)
+
+    agent = relationship("Agent", back_populates="versions")

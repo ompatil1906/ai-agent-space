@@ -120,3 +120,30 @@ class RunResponse(BaseModel):
     output: str
     agent_id: int
     run_id: Optional[int] = None
+
+
+# Versioning schemas
+class AgentVersionBase(BaseModel):
+    version_number: int
+    name: str
+    description: Optional[str] = None
+    system_prompt: str
+    model_name: str
+    temperature: float
+    tools_config: List[Dict[str, Any]]
+    memory_config: Dict[str, Any]
+    workflow_config: Dict[str, Any]
+    change_note: Optional[str] = None
+
+
+class AgentVersionPublic(AgentVersionBase):
+    id: int
+    agent_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AgentVersionCreate(BaseModel):
+    change_note: Optional[str] = "Manual snapshot"
