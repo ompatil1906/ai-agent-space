@@ -49,14 +49,15 @@ Open http://localhost:3000
 - Added evaluation endpoint with LLM-as-judge
 - Improved supervisor multi-agent routing reliability
 - Agent Versioning (auto-snapshots on create/update, list versions, restore, manual snapshot endpoints)
-- Enhanced Agent Runner UI: live token streaming, tool call / tool result visualization, optional thread_id for conversation memory
+- **Agent Builder**: Structured visual builder for MCP tools (add/remove servers), memory settings, and multi-agent workflows (sequential / supervisor with dynamic sub-agents)
+- Enhanced Agent Runner UI: live token streaming, tool call / tool result visualization, optional thread_id for conversation memory, conversation history list with one-click thread resume
 
 ## Next Priorities
-1. Visual Agent Builder (drag-drop MCP config, memory settings UI)
-2. Conversation history UI + deeper tool-call visualization
-3. Ratings and advanced marketplace features
-4. Parallel multi-agent and richer supervisor routing with structured outputs
-5. Evaluation dashboard and batch evaluation harness
+1. Conversation history UI improvements + deeper tool-call visualization (partially done)
+2. Ratings and advanced marketplace features
+3. Parallel multi-agent and richer supervisor routing with structured outputs
+4. Evaluation dashboard and batch evaluation harness
+5. Agent editing UI with version restore in builder
 
 ## Architecture Notes
 - Clean modular design: models / schemas / api / agents / services

@@ -27,6 +27,7 @@ function AgentRunContent() {
   const [token, setToken] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(true);
   const [threadId, setThreadId] = useState<string>("");
+  const [runs, setRuns] = useState<any[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
 
@@ -42,6 +43,14 @@ function AgentRunContent() {
     })
       .then((r) => r.json())
       .then(setAgent);
+
+    // Load conversation history
+    fetch(`${API_BASE}/agents/${agentId}/runs`, {
+      headers: { Authorization: `Bearer ${t}` },
+    })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setRuns)
+      .catch(() => setRuns([]));
   }, [agentId]);
 
   useEffect(() => {
@@ -230,6 +239,39 @@ function AgentRunContent() {
               )}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Conversation History</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {runs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No previous runs yet.</p>
+          ) : (
+            <div className="space-y-2 max-h-60 overflow-auto">
+              {runs.map((run) => (
+                <div
+                  key={run.id}
+                  className="border rounded p-2 text-sm cursor-pointer hover:bg-muted"
+                  onClick={() => setThreadId(String(run.id))}
+                >
+                  <div className="flex justify-between">
+                    <span className="font-medium">Run #{run.id}</span>
+                    <Badge variant={run.status === "completed" ? "default" : "secondary"}>
+                      {run.status}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{run.input}</p>
+                  <p className="text-xs">{new Date(run.created_at).toLocaleString()}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground mt-2">
+            Click a run to reuse its thread_id for continued conversation memory.
+          </p>
         </CardContent>
       </Card>
 
