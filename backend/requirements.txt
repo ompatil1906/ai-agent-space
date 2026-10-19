@@ -40,10 +40,9 @@ langgraph-checkpoint==4.3.0
 langgraph-prebuilt==1.1.1
 langgraph-sdk==0.4.8
 langsmith==0.14.11
-mcp==2.3.0
-mcp-types==2.3.0
+mcp>=1.24.0,<2.0.0
 multidict==7.1.0
-numpy==2.5.4
+numpy>=1.26.0,<3.0.0
 openai==3.35.1
 opentelemetry-api==1.45.1
 orjson==3.13.0
@@ -87,6 +86,5 @@ xxhash==4.0.1
 yarl==1.25.1
 zstandard==0.25.0
 langchain-mcp-adapters>=0.3.0
-mcp>=1.30.0
 email-validator>=2.2.0
 psycopg2-binary>=2.9.9
