@@ -122,6 +122,19 @@ class RunResponse(BaseModel):
     run_id: Optional[int] = None
 
 
+class EvaluateRequest(BaseModel):
+    input: str
+    criteria: Optional[str] = "helpfulness, accuracy, and clarity"
+    expected_output: Optional[str] = None
+
+
+class EvaluateResponse(BaseModel):
+    score: float
+    explanation: str
+    agent_output: str
+    criteria_scores: Optional[Dict[str, Any]] = None
+
+
 # Versioning schemas
 class AgentVersionBase(BaseModel):
     version_number: int
