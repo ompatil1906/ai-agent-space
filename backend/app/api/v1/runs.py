@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
-from app.agents.runtime import run_agent, stream_agent
+from app.agents.runtime import run_agent, stream_agent, evaluate_output
 from app.core.database import get_db
 from app.core.security import get_current_active_user
 from app.models import Agent, AgentRun, User
-from app.schemas import AgentRunPublic, RunRequest, RunResponse
+from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse
 
 router = APIRouter()
 
@@ -135,6 +135,44 @@ async def stream_agent_endpoint(
             yield {"event": "error", "data": str(e)}
 
     return EventSourceResponse(event_generator())
+
+
+@router.post("/{agent_id}/evaluate", response_model=EvaluateResponse)
+async def evaluate_agent(
+    agent_id: int,
+    request: EvaluateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Run the agent then evaluate the output with an LLM-as-judge."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.owner_id != current_user.id and not agent.is_public:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    agent_config = {
+        "model_name": agent.model_name,
+        "temperature": agent.temperature,
+        "system_prompt": agent.system_prompt,
+        "tools_config": agent.tools_config or [],
+        "memory_config": agent.memory_config or {},
+        "workflow_config": agent.workflow_config or {},
+    }
+
+    try:
+        output = await run_agent(agent_config, request.input)
+        eval_result = await evaluate_output(
+            agent_config, request.input, output, criteria=request.criteria or "helpfulness, accuracy, and clarity"
+        )
+        return EvaluateResponse(
+            score=eval_result.get("score", 5),
+            explanation=eval_result.get("explanation", ""),
+            agent_output=output,
+            criteria_scores=eval_result.get("criteria_scores"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
 
 
 @router.get("/{agent_id}/runs", response_model=List[AgentRunPublic])
