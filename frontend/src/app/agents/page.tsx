@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -247,9 +248,9 @@ export default function AgentsPage() {
                 <p className="text-xs text-green-600">MCP Tools: {agent.tools_config.length} server(s)</p>
               )}
               <div className="mt-4 flex gap-2 flex-wrap">
-                <Button size="sm" variant="outline" asChild>
-                  <a href={`/agents/${agent.id}`}>View / Run</a>
-                </Button>
+                <Link href={`/agents/${agent.id}`} className={buttonVariants({ size: "sm", variant: "outline" })}>
+                  View / Run
+                </Link>
                 <Button size="sm" variant="secondary" onClick={() => publishAgent(agent.id, !agent.is_published)}>
                   {agent.is_published ? "Unpublish" : "Publish"}
                 </Button>

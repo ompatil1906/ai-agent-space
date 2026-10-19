@@ -88,3 +88,5 @@ yarl==1.25.1
 zstandard==0.25.0
 langchain-mcp-adapters>=0.3.0
 mcp>=1.30.0
+email-validator>=2.2.0
+psycopg2-binary>=2.9.9

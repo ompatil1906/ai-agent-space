@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
-export default function AgentRunPage() {
+function AgentRunContent() {
   const params = useParams();
   const agentId = params.id as string;
   const [agent, setAgent] = useState<any>(null);
@@ -151,5 +151,19 @@ export default function AgentRunPage() {
         <p className="mt-1">System Prompt: {agent.system_prompt?.slice(0, 200)}...</p>
       </div>
     </div>
+  );
+}
+
+export default function AgentRunPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-muted-foreground">Loading agent run...</p>
+        </div>
+      }
+    >
+      <AgentRunContent />
+    </Suspense>
   );
 }

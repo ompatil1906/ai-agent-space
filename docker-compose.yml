@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ai-agent-space-db
+    restart: always
+    environment:
+      POSTGRES_USER: aiagentuser
+      POSTGRES_PASSWORD: aiagentpassword
+      POSTGRES_DB: aiagentspace
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiagentuser -d aiagentspace"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-agent-space-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      PROJECT_NAME: "AI Agent Space"
+      API_V1_STR: "/api/v1"
+      SECRET_KEY: "change-this-to-a-secure-random-key-in-production"
+      DATABASE_URL: "postgresql://aiagentuser:aiagentpassword@db:5432/aiagentspace"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost:8000/api/v1"
+    container_name: ai-agent-space-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: "http://localhost:8000/api/v1"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

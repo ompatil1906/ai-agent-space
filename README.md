@@ -80,5 +80,14 @@ python examples/example_mcp_server.py
   ```
 
 
+## Deployment
+
+See [DEPLOYMENT.md](file:///Users/ompatil/Om/Projects/ai-agent-space/DEPLOYMENT.md) for step-by-step instructions:
+- **Frontend on Vercel**: Connect repo, set root directory to `frontend`, set `NEXT_PUBLIC_API_URL`.
+- **Backend on Render**: 1-click deploy via [`render.yaml`](file:///Users/ompatil/Om/Projects/ai-agent-space/render.yaml) (FastAPI + PostgreSQL).
+- **Backend on Railway**: Deploy via [`railway.json`](file:///Users/ompatil/Om/Projects/ai-agent-space/railway.json) & [`backend/Dockerfile`](file:///Users/ompatil/Om/Projects/ai-agent-space/backend/Dockerfile).
+- **Self-Hosted / Local Docker**: Run `docker compose up --build`.
+- **CI/CD**: Automated GitHub Actions workflow in [`.github/workflows/ci.yml`](file:///Users/ompatil/Om/Projects/ai-agent-space/.github/workflows/ci.yml).
+
 ## Database Schema Note
 New fields (credits, workflow_config) were added. For existing SQLite DBs, delete `backend/*.db` (or the app.db) and restart the backend so create_all rebuilds tables. Fresh installs work immediately.

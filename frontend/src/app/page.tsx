@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 
 export default function Home() {
   return (
@@ -9,18 +9,18 @@ export default function Home() {
         Build, configure, run, and share advanced AI agents with real tool use, MCP servers, and multi-agent workflows.
       </p>
       <div className="flex gap-4">
-        <Button asChild size="lg">
-          <Link href="/agents">My Agents</Link>
-        </Button>
-        <Button asChild size="lg" variant="secondary">
-          <Link href="/marketplace">Marketplace</Link>
-        </Button>
-        <Button asChild variant="outline" size="lg">
-          <Link href="/login">Login</Link>
-        </Button>
-        <Button asChild variant="secondary" size="lg">
-          <Link href="/register">Register</Link>
-        </Button>
+        <Link href="/agents" className={buttonVariants({ size: "lg" })}>
+          My Agents
+        </Link>
+        <Link href="/marketplace" className={buttonVariants({ size: "lg", variant: "secondary" })}>
+          Marketplace
+        </Link>
+        <Link href="/login" className={buttonVariants({ size: "lg", variant: "outline" })}>
+          Login
+        </Link>
+        <Link href="/register" className={buttonVariants({ size: "lg", variant: "secondary" })}>
+          Register
+        </Link>
       </div>
       <div className="mt-12 grid max-w-4xl gap-6 md:grid-cols-3">
         <div className="rounded-lg border p-6">
