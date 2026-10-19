@@ -8,37 +8,27 @@ A modern, advanced platform for creating, configuring, running, and sharing AI a
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
+source venv/bin/activate  # or `venv\Scripts\activate` on Windows
 pip install -r requirements.txt
-cp .env.example .env
-# Edit .env and set OPENAI_API_KEY (and SECRET_KEY)
-uvicorn app.main:app --reload
+cp .env.example .env  # set OPENAI_API_KEY and SECRET_KEY
+uvicorn app.main:app --reload --port 8000
 ```
-
-API docs: http://localhost:8000/docs
 
 ### Frontend
 ```bash
 cd frontend
 npm install
+cp .env.example .env.local  # set NEXT_PUBLIC_API_URL=http://localhost:8000
 npm run dev
 ```
 
 Open http://localhost:3000
 
-### Example MCP Server
-```bash
-cd backend
-python examples/example_mcp_server.py
-# Or use it via stdio in agent tools_config
-```
-
-## Features Implemented
-- JWT Auth (register / login / me)
-- Agent CRUD (create, list, get, update, delete)
-- Agent run history persistence
-- LangGraph agent runtime with **streaming (SSE)** and conversation memory (MemorySaver checkpointer)
-- **Real MCP integration** via langchain-mcp-adapters (stdio / http / sse)
+## Features
+- **Auth**: JWT registration / login
+- **Agent CRUD**: create, list, update, delete agents with system prompt, model, temperature
+- **Agent Runner**: non-streaming and SSE streaming runs with tool-call events
+- **MCP Integration**: discover and execute tools from real MCP servers (stdio / streamable_http / sse)
 - **Marketplace**: publish, browse, search, clone, credit-based purchase (auto-clone)
 - Multi-agent foundation (workflow_config: single / sequential / supervisor) with proper graph builders
 - Frontend: Login, Register, Agents (with publish/clone), Marketplace page, Agent runner with streaming
@@ -49,6 +39,10 @@ python examples/example_mcp_server.py
 - Agent Runtime: LangGraph + LangChain (with streaming & memory)
 - MCP: Official MCP Python SDK + langchain-mcp-adapters
 - Database: SQLite (dev) → PostgreSQL ready
+
+## Recent Updates
+- Added Agent Versioning (auto-snapshots on create/update, list versions, restore, manual snapshot endpoints)
+- Enhanced Agent Runner UI: live token streaming, tool call / tool result visualization, optional thread_id for conversation memory
 
 ## Next Priorities
 1. Visual Agent Builder (drag-drop MCP config, memory settings UI)
@@ -82,12 +76,12 @@ python examples/example_mcp_server.py
 
 ## Deployment
 
-See [DEPLOYMENT.md](file:///Users/ompatil/Om/Projects/ai-agent-space/DEPLOYMENT.md) for step-by-step instructions:
+See [DEPLOYMENT.md](DEPLOYMENT.md) for step-by-step instructions:
 - **Frontend on Vercel**: Connect repo, set root directory to `frontend`, set `NEXT_PUBLIC_API_URL`.
-- **Backend on Render**: 1-click deploy via [`render.yaml`](file:///Users/ompatil/Om/Projects/ai-agent-space/render.yaml) (FastAPI + PostgreSQL).
-- **Backend on Railway**: Deploy via [`railway.json`](file:///Users/ompatil/Om/Projects/ai-agent-space/railway.json) & [`backend/Dockerfile`](file:///Users/ompatil/Om/Projects/ai-agent-space/backend/Dockerfile).
+- **Backend on Render**: 1-click deploy via [`render.yaml`](render.yaml) (FastAPI + PostgreSQL).
+- **Backend on Railway**: Deploy via [`railway.json`](railway.json) & [`backend/Dockerfile`](backend/Dockerfile).
 - **Self-Hosted / Local Docker**: Run `docker compose up --build`.
-- **CI/CD**: Automated GitHub Actions workflow in [`.github/workflows/ci.yml`](file:///Users/ompatil/Om/Projects/ai-agent-space/.github/workflows/ci.yml).
+- **CI/CD**: Automated GitHub Actions workflow in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ## Database Schema Note
 New fields (credits, workflow_config) were added. For existing SQLite DBs, delete `backend/*.db` (or the app.db) and restart the backend so create_all rebuilds tables. Fresh installs work immediately.
