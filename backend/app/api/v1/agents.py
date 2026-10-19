@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.security import get_current_active_user
 from app.models import Agent, User
 from app.schemas import AgentCreate, AgentPublic, AgentUpdate
+from app.services.mcp_service import mcp_service
 
 router = APIRouter()
 
@@ -93,3 +94,19 @@ def delete_agent(
         raise HTTPException(status_code=403, detail="Not enough permissions")
     db.delete(agent)
     db.commit()
+
+
+@router.post("/discover-tools")
+async def discover_mcp_tools(
+    tools_config: List[dict],
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """
+    Discover tools available from the provided MCP server configurations.
+    Useful for the Agent Builder UI to preview tools before saving.
+    """
+    try:
+        tools = await mcp_service.discover_tools(tools_config)
+        return {"tools": tools, "count": len(tools)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"MCP discovery failed: {str(e)}")

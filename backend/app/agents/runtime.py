@@ -1,5 +1,5 @@
 """
-Advanced LangGraph-based agent runtime with streaming, memory, and MCP-ready tool support.
+Advanced LangGraph-based agent runtime with streaming, memory, and real MCP tool support.
 """
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -10,6 +10,7 @@ from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.services.mcp_service import mcp_service
 
 
 class AgentState(BaseModel):
@@ -32,8 +33,7 @@ def get_llm(model_name: str, temperature: float) -> ChatOpenAI:
 
 def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """
-    Build a LangGraph agent.
-    Supports tools via ToolNode (MCP tools will be injected here).
+    Build a LangGraph agent with optional tools (MCP-backed).
     """
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
@@ -41,7 +41,6 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
 
     llm = get_llm(model_name, temperature)
 
-    # Bind tools if provided (MCP tools in future)
     if tools:
         llm = llm.bind_tools(tools)
 
@@ -67,8 +66,17 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
 
     workflow.set_entry_point("agent")
 
-    # Compile with checkpointer for memory
     return workflow.compile(checkpointer=checkpointer)
+
+
+async def _load_tools(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None) -> Optional[List[Any]]:
+    """Load MCP tools from agent config if not already provided."""
+    if tools is not None:
+        return tools
+    tools_config = agent_config.get("tools_config") or []
+    if tools_config:
+        return await mcp_service.get_tools(tools_config)
+    return None
 
 
 async def run_agent(
@@ -77,7 +85,8 @@ async def run_agent(
     thread_id: Optional[str] = None,
     tools: Optional[List[Any]] = None,
 ) -> str:
-    """Non-streaming run."""
+    """Non-streaming agent run with MCP tool support and memory."""
+    tools = await _load_tools(agent_config, tools)
     graph = build_agent_graph(agent_config, tools)
     config = {"configurable": {"thread_id": thread_id or "default"}} if thread_id else {}
     initial_state = AgentState(messages=[HumanMessage(content=user_input)])
@@ -95,11 +104,11 @@ async def stream_agent(
     """
     Streaming generator that yields events:
     - {"type": "token", "content": "..."}
-    - {"type": "message", "content": "..."}
     - {"type": "done", "content": full_output}
     - {"type": "error", "content": "..."}
     """
     try:
+        tools = await _load_tools(agent_config, tools)
         graph = build_agent_graph(agent_config, tools)
         config = {"configurable": {"thread_id": thread_id or f"run-{id(user_input)}"}}
         initial_state = AgentState(messages=[HumanMessage(content=user_input)])
@@ -114,7 +123,6 @@ async def stream_agent(
                     full_output += token
                     yield {"type": "token", "content": token}
             elif kind == "on_chain_end" and event.get("name") == "agent":
-                # Final message
                 output = event.get("data", {}).get("output", {})
                 messages = output.get("messages", [])
                 if messages:

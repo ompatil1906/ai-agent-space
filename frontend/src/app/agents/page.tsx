@@ -16,7 +16,17 @@ interface Agent {
   model_name: string;
   temperature: number;
   is_public: boolean;
+  tools_config?: any[];
 }
+
+const defaultToolsConfig = `[
+  {
+    "name": "example",
+    "transport": "stdio",
+    "command": "python",
+    "args": ["backend/examples/example_mcp_server.py"]
+  }
+]`;
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -25,10 +35,12 @@ export default function AgentsPage() {
   const [newAgent, setNewAgent] = useState({
     name: "",
     description: "",
-    system_prompt: "You are a helpful AI assistant.",
+    system_prompt: "You are a helpful AI assistant. You have access to tools when configured.",
     model_name: "gpt-4o-mini",
     temperature: 0.7,
+    tools_config_json: "[]",
   });
+  const [discoverResult, setDiscoverResult] = useState<string>("");
 
   useEffect(() => {
     const t = localStorage.getItem("token");
@@ -49,16 +61,54 @@ export default function AgentsPage() {
     }
   };
 
+  const discoverTools = async () => {
+    if (!token) return;
+    try {
+      const tools_config = JSON.parse(newAgent.tools_config_json || "[]");
+      const res = await fetch(`${API_BASE}/agents/discover-tools`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(tools_config),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDiscoverResult(JSON.stringify(data, null, 2));
+      } else {
+        setDiscoverResult(`Error: ${data.detail}`);
+      }
+    } catch (e) {
+      setDiscoverResult(`Invalid JSON or error: ${e}`);
+    }
+  };
+
   const createAgent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
+    let tools_config: any[] = [];
+    try {
+      tools_config = JSON.parse(newAgent.tools_config_json || "[]");
+    } catch {
+      alert("Invalid tools_config JSON");
+      return;
+    }
+    const payload = {
+      name: newAgent.name,
+      description: newAgent.description,
+      system_prompt: newAgent.system_prompt,
+      model_name: newAgent.model_name,
+      temperature: newAgent.temperature,
+      tools_config,
+    };
     const res = await fetch(`${API_BASE}/agents/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(newAgent),
+      body: JSON.stringify(payload),
     });
     if (res.ok) {
       setShowCreate(false);
@@ -66,10 +116,12 @@ export default function AgentsPage() {
       setNewAgent({
         name: "",
         description: "",
-        system_prompt: "You are a helpful AI assistant.",
+        system_prompt: "You are a helpful AI assistant. You have access to tools when configured.",
         model_name: "gpt-4o-mini",
         temperature: 0.7,
+        tools_config_json: "[]",
       });
+      setDiscoverResult("");
     }
   };
 
@@ -125,6 +177,22 @@ export default function AgentsPage() {
                   className="w-full"
                 />
               </div>
+              <div>
+                <label className="text-sm font-medium">MCP Tools Config (JSON array)</label>
+                <Textarea
+                  placeholder={defaultToolsConfig}
+                  value={newAgent.tools_config_json}
+                  onChange={(e) => setNewAgent({ ...newAgent, tools_config_json: e.target.value })}
+                  rows={8}
+                  className="font-mono text-xs"
+                />
+                <Button type="button" variant="outline" size="sm" className="mt-2" onClick={discoverTools}>
+                  Discover Tools
+                </Button>
+                {discoverResult && (
+                  <pre className="mt-2 p-2 bg-muted text-xs overflow-auto max-h-40">{discoverResult}</pre>
+                )}
+              </div>
               <Button type="submit">Create</Button>
             </form>
           </CardContent>
@@ -141,6 +209,9 @@ export default function AgentsPage() {
               <p className="text-sm text-muted-foreground mb-2">{agent.description || "No description"}</p>
               <p className="text-xs">Model: {agent.model_name}</p>
               <p className="text-xs">Temp: {agent.temperature}</p>
+              {agent.tools_config && agent.tools_config.length > 0 && (
+                <p className="text-xs text-green-600">MCP Tools: {agent.tools_config.length} server(s)</p>
+              )}
               <div className="mt-4 flex gap-2">
                 <Button size="sm" variant="outline" asChild>
                   <a href={`/agents/${agent.id}`}>View / Run</a>
