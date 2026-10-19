@@ -31,8 +31,9 @@ Open http://localhost:3000
 - **MCP Integration**: discover and execute tools from real MCP servers (stdio / streamable_http / sse)
 - **Marketplace**: publish, browse, search, clone, credit-based purchase (auto-clone)
 - Multi-agent foundation (workflow_config: single / sequential / supervisor / **parallel**) with proper graph builders
-- **Parallel multi-agent**: Independent specialists run concurrently, then a synthesizer combines outputs
+- **Parallel multi-agent**: Independent specialists run concurrently (fully async), then a synthesizer combines outputs. Streaming now emits `agent_step` events for multi-agent visibility.
 - Improved supervisor routing with stricter decision format for reliability
+- **MCP Tool Preview**: Discover and preview available tools from MCP configs directly in the Agent Builder UI
 - **Marketplace Ratings**: Rate published agents (1-5 + review), list ratings, average score
 - Frontend: Login, Register, Agents (with publish/clone), Marketplace page, Agent runner with streaming
 - **Versioning**: auto-snapshots on create/update, list, restore, manual snapshot

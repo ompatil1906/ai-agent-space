@@ -223,6 +223,11 @@ function AgentRunContent() {
                         </pre>
                       </div>
                     )}
+                    {ev.type === "agent_step" && (
+                      <div className="text-blue-600 border-l-2 border-blue-400 pl-2 my-1 text-xs">
+                        <strong>[{ev.agent || "Agent"}]</strong>: {ev.content}
+                      </div>
+                    )}
                     {ev.type === "error" && (
                       <div className="text-red-500">Error: {ev.content}</div>
                     )}

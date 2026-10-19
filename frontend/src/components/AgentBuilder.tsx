@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { API_BASE } from "@/lib/api";
 
 interface ToolConfig {
   name: string;
@@ -44,6 +45,8 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
     initial?.workflow_config?.sub_agents || initial?.workflow_config?.workers || []
   );
   const [loading, setLoading] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoveredTools, setDiscoveredTools] = useState<any[]>([]);
 
   const addTool = () => {
     setTools([...tools, { name: `tool_${tools.length + 1}`, transport: "stdio", command: "python", args: [] }]);
@@ -114,6 +117,30 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const discoverTools = async () => {
+    setDiscovering(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/agents/discover-tools`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+        body: JSON.stringify(tools),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDiscoveredTools(data.tools || []);
+      } else {
+        setDiscoveredTools([{ name: "Error", description: await res.text() }]);
+      }
+    } catch (e) {
+      setDiscoveredTools([{ name: "Error", description: String(e) }]);
+    }
+    setDiscovering(false);
   };
 
   return (
@@ -221,10 +248,25 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
           <div className="space-y-4 border rounded-lg p-4">
             <div className="flex justify-between items-center">
               <h3 className="font-medium">MCP Tools</h3>
-              <Button type="button" size="sm" variant="outline" onClick={addTool}>
-                Add MCP Server
-              </Button>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={discoverTools} disabled={discovering || tools.length === 0}>
+                  {discovering ? "Discovering..." : "Preview Tools"}
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={addTool}>
+                  Add MCP Server
+                </Button>
+              </div>
             </div>
+            {discoveredTools.length > 0 && (
+              <div className="mt-2 p-2 bg-muted rounded text-xs max-h-32 overflow-auto">
+                <strong>Discovered Tools:</strong>
+                <ul className="list-disc pl-4">
+                  {discoveredTools.map((t, idx) => (
+                    <li key={idx}>{t.name}: {t.description}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {tools.map((tool, i) => (
               <div key={i} className="border rounded p-3 space-y-2">
                 <div className="flex justify-between">

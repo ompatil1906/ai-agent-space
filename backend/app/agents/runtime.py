@@ -236,29 +236,28 @@ def build_parallel_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]
 
     workflow = StateGraph(AgentState)
 
-    def parallel_node(state: AgentState):
-        """Run all sub-agents and collect their outputs."""
-        import concurrent.futures
+    async def parallel_node(state: AgentState):
+        """Run all sub-agents concurrently using asyncio."""
+        import asyncio
         results = []
 
-        def run_one(sa: Dict[str, Any]):
+        async def run_one(sa: Dict[str, Any]):
             name = sa.get("name", "specialist")
             prompt = sa.get("system_prompt", "You are a specialist.")
             messages = [SystemMessage(content=prompt)] + state["messages"]
-            response = llm.invoke(messages)
-            response.additional_kwargs = response.additional_kwargs or {}
-            response.additional_kwargs["agent"] = name
-            return response
+            try:
+                response = await llm.ainvoke(messages)
+                response.additional_kwargs = response.additional_kwargs or {}
+                response.additional_kwargs["agent"] = name
+                return response
+            except Exception as e:
+                logger.warning(f"Parallel worker {name} failed: {e}")
+                err_msg = AIMessage(content=f"Error in {name}: {str(e)}")
+                err_msg.additional_kwargs = {"agent": name}
+                return err_msg
 
-        # Run in parallel threads for true concurrency
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(sub_agents))) as executor:
-            futures = [executor.submit(run_one, sa) for sa in sub_agents]
-            for fut in concurrent.futures.as_completed(futures):
-                try:
-                    results.append(fut.result())
-                except Exception as e:
-                    logger.warning(f"Parallel worker failed: {e}")
-
+        tasks = [run_one(sa) for sa in sub_agents]
+        results = await asyncio.gather(*tasks, return_exceptions=False)
         return {"messages": results}
 
     def synthesizer_node(state: AgentState):
@@ -374,14 +373,22 @@ async def stream_agent(
                     "content": str(output)[:2000],
                 }
 
-            elif kind == "on_chain_end" and name in ("agent", "supervisor"):
+            elif kind == "on_chain_end":
                 output = event.get("data", {}).get("output", {})
-                messages = output.get("messages", [])
+                messages = output.get("messages", []) if isinstance(output, dict) else []
                 if messages:
                     last = messages[-1]
                     content = getattr(last, "content", "") or ""
+                    agent_name = getattr(last, "additional_kwargs", {}).get("agent") or name or "agent"
                     if content and content not in full_output:
                         full_output = content
+                    # Emit structured agent step for multi-agent visibility
+                    if agent_name and content:
+                        yield {
+                            "type": "agent_step",
+                            "agent": agent_name,
+                            "content": content[:1000],
+                        }
 
         yield {"type": "done", "content": full_output}
 
