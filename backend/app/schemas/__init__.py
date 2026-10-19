@@ -85,4 +85,35 @@ class AgentInDB(AgentBase):
 
 
 class AgentPublic(AgentInDB):
-    owner_email: Optional[str] = None  # optional enrichment
+    owner_email: Optional[str] = None
+
+
+# Agent Run schemas
+class AgentRunCreate(BaseModel):
+    input: str
+
+
+class AgentRunPublic(BaseModel):
+    id: int
+    agent_id: int
+    user_id: int
+    input: str
+    output: Optional[str] = None
+    status: str
+    error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RunRequest(BaseModel):
+    input: str
+    thread_id: Optional[str] = None  # for memory/conversation continuity
+
+
+class RunResponse(BaseModel):
+    output: str
+    agent_id: int
+    run_id: Optional[int] = None

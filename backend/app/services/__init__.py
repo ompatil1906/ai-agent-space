@@ -1,1 +1,1 @@
-"""Business logic and services."""
+from app.services.mcp_service import mcp_service

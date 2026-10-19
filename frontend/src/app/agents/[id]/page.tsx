@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
-export default function AgentDetailPage() {
+export default function AgentRunPage() {
   const params = useParams();
   const agentId = params.id as string;
   const [agent, setAgent] = useState<any>(null);
@@ -16,6 +16,8 @@ export default function AgentDetailPage() {
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [streaming, setStreaming] = useState(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const t = localStorage.getItem("token");
@@ -35,23 +37,73 @@ export default function AgentDetailPage() {
     if (!token || !input) return;
     setLoading(true);
     setOutput("");
+    abortControllerRef.current = new AbortController();
+
     try {
-      const res = await fetch(`${API_BASE}/agents/${agentId}/run`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ input }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setOutput(data.output);
+      if (streaming) {
+        const res = await fetch(`${API_BASE}/agents/${agentId}/run/stream`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ input }),
+          signal: abortControllerRef.current.signal,
+        });
+
+        if (!res.ok || !res.body) {
+          const err = await res.json().catch(() => ({ detail: "Stream failed" }));
+          setOutput(`Error: ${err.detail || "Unknown error"}`);
+          setLoading(false);
+          return;
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6);
+              if (data && data !== "[DONE]") {
+                setOutput((prev) => prev + data);
+              }
+            } else if (line.startsWith("event: done")) {
+              // handled by data
+            } else if (line.startsWith("event: error")) {
+              // next data is error
+            }
+          }
+        }
       } else {
-        setOutput(`Error: ${data.detail}`);
+        // Non-streaming fallback
+        const res = await fetch(`${API_BASE}/agents/${agentId}/run`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ input }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setOutput(data.output);
+        } else {
+          setOutput(`Error: ${data.detail}`);
+        }
       }
-    } catch (e) {
-      setOutput("Network error");
+    } catch (e: any) {
+      if (e.name !== "AbortError") {
+        setOutput(`Error: ${e.message || "Network error"}`);
+      }
     }
     setLoading(false);
   };
@@ -67,6 +119,16 @@ export default function AgentDetailPage() {
           <CardTitle>Run Agent</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={streaming}
+                onChange={(e) => setStreaming(e.target.checked)}
+              />
+              Streaming mode
+            </label>
+          </div>
           <Textarea
             placeholder="Enter your message..."
             value={input}

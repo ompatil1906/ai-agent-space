@@ -1,4 +1,4 @@
 # Re-export models for easy imports
-from app.models.user import User, Agent
+from app.models.user import User, Agent, AgentRun
 
-__all__ = ["User", "Agent"]
+__all__ = ["User", "Agent", "AgentRun"]
