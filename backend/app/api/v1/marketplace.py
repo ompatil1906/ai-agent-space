@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user
-from app.models import Agent, User
-from app.schemas import AgentPublic
+from app.models import Agent, User, AgentRating
+from app.schemas import AgentPublic, AgentRatingCreate, AgentRatingPublic, AgentWithRating
 
 router = APIRouter()
 
@@ -157,3 +157,89 @@ def get_my_credits(
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
     return {"credits": current_user.credits, "email": current_user.email}
+
+
+@router.post("/agents/{agent_id}/rate", response_model=AgentRatingPublic)
+def rate_agent(
+    agent_id: int,
+    rating_in: AgentRatingCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Rate a published agent (1-5 stars + optional review). One rating per user per agent."""
+    agent = db.query(Agent).filter(Agent.id == agent_id, Agent.is_published == True).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Published agent not found")
+
+    existing = (
+        db.query(AgentRating)
+        .filter(AgentRating.agent_id == agent_id, AgentRating.user_id == current_user.id)
+        .first()
+    )
+    if existing:
+        existing.rating = rating_in.rating
+        existing.review = rating_in.review
+        db.commit()
+        db.refresh(existing)
+        result = AgentRatingPublic.model_validate(existing)
+        result.user_email = current_user.email
+        return result
+
+    rating = AgentRating(
+        agent_id=agent_id,
+        user_id=current_user.id,
+        rating=rating_in.rating,
+        review=rating_in.review,
+    )
+    db.add(rating)
+    db.commit()
+    db.refresh(rating)
+    result = AgentRatingPublic.model_validate(rating)
+    result.user_email = current_user.email
+    return result
+
+
+@router.get("/agents/{agent_id}/ratings", response_model=List[AgentRatingPublic])
+def list_agent_ratings(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    skip: int = 0,
+    limit: int = 50,
+) -> Any:
+    """List ratings for a published agent."""
+    ratings = (
+        db.query(AgentRating)
+        .filter(AgentRating.agent_id == agent_id)
+        .order_by(AgentRating.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    result = []
+    for r in ratings:
+        data = AgentRatingPublic.model_validate(r)
+        if r.user:
+            data.user_email = r.user.email
+        result.append(data)
+    return result
+
+
+@router.get("/agents/{agent_id}/rating-summary")
+def get_rating_summary(
+    agent_id: int,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Get average rating and count for an agent."""
+    from sqlalchemy import func
+    stats = (
+        db.query(
+            func.avg(AgentRating.rating).label("avg"),
+            func.count(AgentRating.id).label("count"),
+        )
+        .filter(AgentRating.agent_id == agent_id)
+        .first()
+    )
+    return {
+        "average_rating": float(stats.avg) if stats.avg else None,
+        "rating_count": stats.count or 0,
+    }

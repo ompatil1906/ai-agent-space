@@ -88,3 +88,24 @@ class AgentVersion(Base):
     change_note = Column(String, nullable=True)
 
     agent = relationship("Agent", back_populates="versions")
+
+
+class AgentRating(Base):
+    """Marketplace ratings for published agents."""
+    __tablename__ = "agent_ratings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    rating = Column(Integer, nullable=False)  # 1-5
+    review = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    agent = relationship("Agent", back_populates="ratings")
+    user = relationship("User", back_populates="ratings")
+
+
+# Add relationships to existing models
+User.ratings = relationship("AgentRating", back_populates="user", cascade="all, delete-orphan")
+Agent.ratings = relationship("AgentRating", back_populates="agent", cascade="all, delete-orphan")

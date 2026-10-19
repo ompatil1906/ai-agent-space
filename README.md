@@ -30,7 +30,10 @@ Open http://localhost:3000
 - **Agent Runner**: non-streaming and SSE streaming runs with tool-call events
 - **MCP Integration**: discover and execute tools from real MCP servers (stdio / streamable_http / sse)
 - **Marketplace**: publish, browse, search, clone, credit-based purchase (auto-clone)
-- Multi-agent foundation (workflow_config: single / sequential / supervisor) with proper graph builders
+- Multi-agent foundation (workflow_config: single / sequential / supervisor / **parallel**) with proper graph builders
+- **Parallel multi-agent**: Independent specialists run concurrently, then a synthesizer combines outputs
+- Improved supervisor routing with stricter decision format for reliability
+- **Marketplace Ratings**: Rate published agents (1-5 + review), list ratings, average score
 - Frontend: Login, Register, Agents (with publish/clone), Marketplace page, Agent runner with streaming
 - **Versioning**: auto-snapshots on create/update, list, restore, manual snapshot
 - **Evaluation Harness**: LLM-as-judge scoring endpoint (`POST /api/v1/agents/{id}/evaluate`)
@@ -45,19 +48,21 @@ Open http://localhost:3000
 - Checkpointer: MemorySaver (dev) / PostgresSaver (prod)
 
 ## Recent Updates
+- Added **parallel multi-agent** workflow (concurrent specialists + synthesizer)
+- Improved supervisor routing reliability with structured decision format
+- Added marketplace **ratings** (1-5 stars + reviews, summary endpoint)
 - Added production-ready checkpointer support (PostgresSaver fallback to MemorySaver)
 - Added evaluation endpoint with LLM-as-judge
-- Improved supervisor multi-agent routing reliability
 - Agent Versioning (auto-snapshots on create/update, list versions, restore, manual snapshot endpoints)
-- **Agent Builder**: Structured visual builder for MCP tools (add/remove servers), memory settings, and multi-agent workflows (sequential / supervisor with dynamic sub-agents)
+- **Agent Builder**: Structured visual builder for MCP tools (add/remove servers), memory settings, and multi-agent workflows (sequential / supervisor / parallel with dynamic sub-agents)
 - Enhanced Agent Runner UI: live token streaming, tool call / tool result visualization, optional thread_id for conversation memory, conversation history list with one-click thread resume
 
 ## Next Priorities
-1. Conversation history UI improvements + deeper tool-call visualization (partially done)
-2. Ratings and advanced marketplace features
-3. Parallel multi-agent and richer supervisor routing with structured outputs
-4. Evaluation dashboard and batch evaluation harness
-5. Agent editing UI with version restore in builder
+1. Ratings display in marketplace UI + advanced marketplace filters
+2. Evaluation dashboard and batch evaluation harness
+3. Agent editing UI with version restore in builder
+4. Richer parallel patterns (map-reduce, debate) and structured outputs for supervisor
+5. Conversation history UI improvements + deeper tool-call visualization
 
 ## Architecture Notes
 - Clean modular design: models / schemas / api / agents / services

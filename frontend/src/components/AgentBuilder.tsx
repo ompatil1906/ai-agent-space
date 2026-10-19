@@ -37,7 +37,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [temperature, setTemperature] = useState(initial?.temperature || 0.7);
   const [tools, setTools] = useState<ToolConfig[]>(initial?.tools_config || []);
   const [memoryEnabled, setMemoryEnabled] = useState(initial?.memory_config?.enabled ?? true);
-  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor">(
+  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel">(
     initial?.workflow_config?.type || "single"
   );
   const [subAgents, setSubAgents] = useState<SubAgent[]>(
@@ -176,6 +176,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 <SelectItem value="single">Single Agent</SelectItem>
                 <SelectItem value="sequential">Sequential Multi-Agent</SelectItem>
                 <SelectItem value="supervisor">Supervisor Multi-Agent</SelectItem>
+                <SelectItem value="parallel">Parallel Multi-Agent (Synthesizer)</SelectItem>
               </SelectContent>
             </Select>
           </div>

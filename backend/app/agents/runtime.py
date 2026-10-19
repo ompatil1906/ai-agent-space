@@ -140,8 +140,8 @@ def build_sequential_graph(agent_config: Dict[str, Any], tools: Optional[List[An
 
 def build_supervisor_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """
-    Supervisor multi-agent with improved routing.
-    Supervisor decides next worker using a clear instruction, then routes.
+    Supervisor multi-agent with structured routing for reliability.
+    Uses a clear decision format and fallback matching.
     """
     wf = agent_config.get("workflow_config") or {}
     workers = wf.get("workers") or wf.get("sub_agents") or []
@@ -159,8 +159,10 @@ def build_supervisor_graph(agent_config: Dict[str, Any], tools: Optional[List[An
     supervisor_prompt = (
         agent_config.get("system_prompt", "You are a supervisor coordinating specialist workers.")
         + f"\n\nAvailable workers:\n{worker_desc}\n"
-        + "Decide the next step. Reply ONLY with the exact worker name to call next, "
-        + "or FINISH if the task is complete. Do not add extra text."
+        + "Decide the next step. You MUST reply with EXACTLY one of the following on its own line:\n"
+        + "\n".join(f"WORKER: {name}" for name in worker_names)
+        + "\nFINISH\n"
+        + "Do not add any other text."
     )
 
     workflow = StateGraph(AgentState)
@@ -168,13 +170,13 @@ def build_supervisor_graph(agent_config: Dict[str, Any], tools: Optional[List[An
     def supervisor_node(state: AgentState):
         messages = [SystemMessage(content=supervisor_prompt)] + state["messages"]
         response = base_llm.invoke(messages)
-        content = (response.content or "").strip()
+        content = (response.content or "").strip().upper()
         next_worker = None
         for name in worker_names:
-            if name.lower() in content.lower():
+            if f"WORKER: {name.upper()}" in content or name.upper() in content:
                 next_worker = name
                 break
-        if "finish" in content.lower() or next_worker is None:
+        if "FINISH" in content or next_worker is None:
             # Final answer from supervisor
             return {"messages": [response]}
         response.additional_kwargs = response.additional_kwargs or {}
@@ -216,6 +218,78 @@ def build_supervisor_graph(agent_config: Dict[str, Any], tools: Optional[List[An
     return workflow.compile(checkpointer=checkpointer)
 
 
+def build_parallel_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
+    """
+    Parallel multi-agent: all sub-agents run (concurrently where possible), then a synthesizer combines outputs.
+    Advanced pattern for independent specialist analysis.
+    """
+    wf = agent_config.get("workflow_config") or {}
+    sub_agents = wf.get("sub_agents") or []
+    if not sub_agents:
+        return build_single_agent_graph(agent_config, tools)
+
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    temperature = agent_config.get("temperature", 0.7)
+    llm = get_llm(model_name, temperature)
+    if tools:
+        llm = llm.bind_tools(tools)
+
+    workflow = StateGraph(AgentState)
+
+    def parallel_node(state: AgentState):
+        """Run all sub-agents and collect their outputs."""
+        import concurrent.futures
+        results = []
+
+        def run_one(sa: Dict[str, Any]):
+            name = sa.get("name", "specialist")
+            prompt = sa.get("system_prompt", "You are a specialist.")
+            messages = [SystemMessage(content=prompt)] + state["messages"]
+            response = llm.invoke(messages)
+            response.additional_kwargs = response.additional_kwargs or {}
+            response.additional_kwargs["agent"] = name
+            return response
+
+        # Run in parallel threads for true concurrency
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(sub_agents))) as executor:
+            futures = [executor.submit(run_one, sa) for sa in sub_agents]
+            for fut in concurrent.futures.as_completed(futures):
+                try:
+                    results.append(fut.result())
+                except Exception as e:
+                    logger.warning(f"Parallel worker failed: {e}")
+
+        return {"messages": results}
+
+    def synthesizer_node(state: AgentState):
+        """Combine all specialist outputs into a final answer."""
+        specialist_outputs = [
+            f"[{getattr(m, 'additional_kwargs', {}).get('agent', 'specialist')}]: {m.content}"
+            for m in state["messages"]
+            if isinstance(m, AIMessage) and getattr(m, "additional_kwargs", {}).get("agent")
+        ]
+        synth_prompt = (
+            "You are a synthesizer. Combine the following specialist analyses into a coherent, "
+            "complete final answer for the user. Be concise and accurate.\n\n"
+            + "\n\n".join(specialist_outputs)
+        )
+        messages = [SystemMessage(content=synth_prompt)] + [
+            m for m in state["messages"] if not getattr(m, "additional_kwargs", {}).get("agent")
+        ]
+        response = llm.invoke(messages)
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = "synthesizer"
+        return {"messages": [response]}
+
+    workflow.add_node("parallel", parallel_node)
+    workflow.add_node("synthesizer", synthesizer_node)
+    workflow.set_entry_point("parallel")
+    workflow.add_edge("parallel", "synthesizer")
+    workflow.add_edge("synthesizer", END)
+
+    return workflow.compile(checkpointer=checkpointer)
+
+
 def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """Dispatch to the correct graph builder based on workflow_config.type."""
     wf_type = (agent_config.get("workflow_config") or {}).get("type", "single")
@@ -223,6 +297,8 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
         return build_sequential_graph(agent_config, tools)
     if wf_type == "supervisor":
         return build_supervisor_graph(agent_config, tools)
+    if wf_type == "parallel":
+        return build_parallel_graph(agent_config, tools)
     return build_single_agent_graph(agent_config, tools)
 
 

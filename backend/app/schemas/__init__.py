@@ -160,3 +160,27 @@ class AgentVersionPublic(AgentVersionBase):
 
 class AgentVersionCreate(BaseModel):
     change_note: Optional[str] = "Manual snapshot"
+
+
+# Marketplace Rating schemas
+class AgentRatingCreate(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    review: Optional[str] = None
+
+
+class AgentRatingPublic(BaseModel):
+    id: int
+    agent_id: int
+    user_id: int
+    rating: int
+    review: Optional[str] = None
+    created_at: datetime
+    user_email: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AgentWithRating(AgentPublic):
+    average_rating: Optional[float] = None
+    rating_count: int = 0
