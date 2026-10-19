@@ -1,15 +1,66 @@
-from typing import Any, List
+from typing import Any, List, Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user
-from app.models import Agent, User
-from app.schemas import AgentCreate, AgentPublic, AgentUpdate
+from app.models import Agent, AgentVersion, User
+from app.schemas import (
+    AgentCreate,
+    AgentPublic,
+    AgentUpdate,
+    AgentVersionPublic,
+    AgentVersionCreate,
+)
 from app.services.mcp_service import mcp_service
 
 router = APIRouter()
+
+
+def _create_version(db: Session, agent: Agent, created_by: Optional[int] = None, change_note: str = "Auto snapshot") -> AgentVersion:
+    """Create a new version snapshot of the current agent state."""
+    # Determine next version number
+    last = (
+        db.query(AgentVersion)
+        .filter(AgentVersion.agent_id == agent.id)
+        .order_by(AgentVersion.version_number.desc())
+        .first()
+    )
+    next_num = (last.version_number + 1) if last else 1
+
+    snapshot = {
+        "name": agent.name,
+        "description": agent.description,
+        "system_prompt": agent.system_prompt,
+        "model_name": agent.model_name,
+        "temperature": agent.temperature,
+        "tools_config": agent.tools_config or [],
+        "memory_config": agent.memory_config or {},
+        "workflow_config": agent.workflow_config or {},
+        "is_public": agent.is_public,
+        "is_published": agent.is_published,
+        "price": agent.price,
+    }
+
+    version = AgentVersion(
+        agent_id=agent.id,
+        version_number=next_num,
+        name=agent.name,
+        description=agent.description,
+        system_prompt=agent.system_prompt,
+        model_name=agent.model_name,
+        temperature=agent.temperature,
+        tools_config=agent.tools_config or [],
+        memory_config=agent.memory_config or {},
+        workflow_config=agent.workflow_config or {},
+        snapshot=snapshot,
+        created_by=created_by,
+        change_note=change_note,
+    )
+    db.add(version)
+    return version
 
 
 @router.get("/", response_model=List[AgentPublic])
@@ -43,6 +94,9 @@ def create_agent(
     db.add(agent)
     db.commit()
     db.refresh(agent)
+    # Initial version
+    _create_version(db, agent, created_by=current_user.id, change_note="Initial version")
+    db.commit()
     return agent
 
 
@@ -78,6 +132,9 @@ def update_agent(
     db.add(agent)
     db.commit()
     db.refresh(agent)
+    # Snapshot after update
+    _create_version(db, agent, created_by=current_user.id, change_note="Updated agent")
+    db.commit()
     return agent
 
 
@@ -94,6 +151,73 @@ def delete_agent(
         raise HTTPException(status_code=403, detail="Not enough permissions")
     db.delete(agent)
     db.commit()
+
+
+@router.get("/{agent_id}/versions", response_model=List[AgentVersionPublic])
+def list_agent_versions(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    versions = (
+        db.query(AgentVersion)
+        .filter(AgentVersion.agent_id == agent_id)
+        .order_by(AgentVersion.version_number.desc())
+        .all()
+    )
+    return versions
+
+
+@router.post("/{agent_id}/versions/{version_id}/restore", response_model=AgentPublic)
+def restore_agent_version(
+    agent_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent or agent.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    version = db.query(AgentVersion).filter(
+        AgentVersion.id == version_id, AgentVersion.agent_id == agent_id
+    ).first()
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    # Restore fields from snapshot
+    snap = version.snapshot or {}
+    for field in ["name", "description", "system_prompt", "model_name", "temperature",
+                  "tools_config", "memory_config", "workflow_config", "is_public", "is_published", "price"]:
+        if field in snap:
+            setattr(agent, field, snap[field])
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
+    # Create a new version marking the restore
+    _create_version(db, agent, created_by=current_user.id, change_note=f"Restored from version {version.version_number}")
+    db.commit()
+    return agent
+
+
+@router.post("/{agent_id}/versions", response_model=AgentVersionPublic, status_code=status.HTTP_201_CREATED)
+def create_manual_version(
+    agent_id: int,
+    body: AgentVersionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent or agent.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    version = _create_version(db, agent, created_by=current_user.id, change_note=body.change_note or "Manual snapshot")
+    db.commit()
+    db.refresh(version)
+    return version
 
 
 @router.post("/discover-tools")
