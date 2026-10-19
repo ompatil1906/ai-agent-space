@@ -42,6 +42,8 @@ export default function AgentsPage() {
     model_name: "gpt-4o-mini",
     temperature: 0.7,
     tools_config_json: "[]",
+    workflow_type: "single",
+    workflow_config_json: "{}",
   });
   const [discoverResult, setDiscoverResult] = useState<string>("");
 
@@ -118,10 +120,20 @@ export default function AgentsPage() {
     e.preventDefault();
     if (!token) return;
     let tools_config: any[] = [];
+    let workflow_config: any = {};
     try {
       tools_config = JSON.parse(newAgent.tools_config_json || "[]");
     } catch {
       alert("Invalid tools_config JSON");
+      return;
+    }
+    try {
+      workflow_config = JSON.parse(newAgent.workflow_config_json || "{}");
+      if (newAgent.workflow_type !== "single") {
+        workflow_config.type = newAgent.workflow_type;
+      }
+    } catch {
+      alert("Invalid workflow_config JSON");
       return;
     }
     const payload = {
@@ -131,6 +143,7 @@ export default function AgentsPage() {
       model_name: newAgent.model_name,
       temperature: newAgent.temperature,
       tools_config,
+      workflow_config,
     };
     const res = await fetch(`${API_BASE}/agents/`, {
       method: "POST",
@@ -150,6 +163,8 @@ export default function AgentsPage() {
         model_name: "gpt-4o-mini",
         temperature: 0.7,
         tools_config_json: "[]",
+        workflow_type: "single",
+        workflow_config_json: "{}",
       });
       setDiscoverResult("");
     }
@@ -212,6 +227,32 @@ export default function AgentsPage() {
                   className="w-full"
                 />
               </div>
+              <div>
+                <label className="text-sm font-medium">Workflow Type</label>
+                <select
+                  className="w-full border rounded px-3 py-2 mt-1"
+                  value={newAgent.workflow_type}
+                  onChange={(e) => setNewAgent({ ...newAgent, workflow_type: e.target.value })}
+                >
+                  <option value="single">Single Agent</option>
+                  <option value="sequential">Sequential Multi-Agent</option>
+                  <option value="supervisor">Supervisor Multi-Agent</option>
+                </select>
+              </div>
+              {newAgent.workflow_type !== "single" && (
+                <div>
+                  <label className="text-sm font-medium">
+                    Workflow Config (JSON) — sub_agents / workers
+                  </label>
+                  <Textarea
+                    placeholder={`{\n  "sub_agents": [\n    {"name": "researcher", "system_prompt": "Research thoroughly."},\n    {"name": "writer", "system_prompt": "Write a clear summary."}\n  ]\n}`}
+                    value={newAgent.workflow_config_json}
+                    onChange={(e) => setNewAgent({ ...newAgent, workflow_config_json: e.target.value })}
+                    rows={8}
+                    className="font-mono text-xs"
+                  />
+                </div>
+              )}
               <div>
                 <label className="text-sm font-medium">MCP Tools Config (JSON array)</label>
                 <Textarea

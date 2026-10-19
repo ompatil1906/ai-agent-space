@@ -102,28 +102,32 @@ async def stream_agent_endpoint(
         full_output = ""
         try:
             async for event in stream_agent(agent_config, request.input, thread_id=thread_id):
-                if event["type"] == "token":
+                etype = event.get("type")
+                if etype == "token":
                     full_output += event["content"]
+                    yield {"event": "token", "data": event["content"]}
+                elif etype == "tool_call":
+                    import json
                     yield {
-                        "event": "token",
-                        "data": event["content"],
+                        "event": "tool_call",
+                        "data": json.dumps({"name": event.get("name"), "args": event.get("args", {})}),
                     }
-                elif event["type"] == "done":
+                elif etype == "tool_result":
+                    import json
+                    yield {
+                        "event": "tool_result",
+                        "data": json.dumps({"name": event.get("name"), "content": event.get("content", "")}),
+                    }
+                elif etype == "done":
                     run.output = event["content"] or full_output
                     run.status = "completed"
                     db.commit()
-                    yield {
-                        "event": "done",
-                        "data": run.output,
-                    }
-                elif event["type"] == "error":
+                    yield {"event": "done", "data": run.output}
+                elif etype == "error":
                     run.status = "error"
                     run.error = event["content"]
                     db.commit()
-                    yield {
-                        "event": "error",
-                        "data": event["content"],
-                    }
+                    yield {"event": "error", "data": event["content"]}
         except Exception as e:
             run.status = "error"
             run.error = str(e)

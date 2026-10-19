@@ -70,18 +70,36 @@ function AgentRunContent() {
           const lines = buffer.split("\n");
           buffer = lines.pop() || "";
 
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data && data !== "[DONE]") {
-                setOutput((prev) => prev + data);
+        let currentEvent = "";
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (!data || data === "[DONE]") continue;
+
+            if (currentEvent === "token" || !currentEvent) {
+              setOutput((prev) => prev + data);
+            } else if (currentEvent === "tool_call") {
+              try {
+                const tc = JSON.parse(data);
+                setOutput((prev) => prev + `\n\n🔧 **Tool Call:** ${tc.name}\n\`\`\`json\n${JSON.stringify(tc.args, null, 2)}\n\`\`\`\n`);
+              } catch {
+                setOutput((prev) => prev + `\n[tool_call] ${data}\n`);
               }
-            } else if (line.startsWith("event: done")) {
-              // handled by data
-            } else if (line.startsWith("event: error")) {
-              // next data is error
+            } else if (currentEvent === "tool_result") {
+              try {
+                const tr = JSON.parse(data);
+                setOutput((prev) => prev + `\n✅ **Tool Result (${tr.name}):**\n${tr.content}\n`);
+              } catch {
+                setOutput((prev) => prev + `\n[tool_result] ${data}\n`);
+              }
+            } else if (currentEvent === "error") {
+              setOutput((prev) => prev + `\n❌ Error: ${data}`);
             }
+            currentEvent = "";
           }
+        }
         }
       } else {
         // Non-streaming fallback

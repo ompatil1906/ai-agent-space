@@ -40,7 +40,7 @@ python examples/example_mcp_server.py
 - LangGraph agent runtime with **streaming (SSE)** and conversation memory (MemorySaver checkpointer)
 - **Real MCP integration** via langchain-mcp-adapters (stdio / http / sse)
 - **Marketplace**: publish, browse, search, clone, credit-based purchase (auto-clone)
-- Multi-agent foundation (workflow_config: single / sequential / supervisor)
+- Multi-agent foundation (workflow_config: single / sequential / supervisor) with proper graph builders
 - Frontend: Login, Register, Agents (with publish/clone), Marketplace page, Agent runner with streaming
 
 ## Tech Stack
@@ -52,10 +52,10 @@ python examples/example_mcp_server.py
 
 ## Next Priorities
 1. Visual Agent Builder (drag-drop MCP config, memory settings UI)
-2. Full multi-agent orchestration (supervisor routing, sequential pipelines, parallel)
-3. Persistent checkpointer (PostgresSaver) + evaluation harness
-4. Agent versioning, ratings, and advanced marketplace features
-5. Tool call visualization in streaming UI
+2. Persistent checkpointer (PostgresSaver) + evaluation harness
+3. Agent versioning, ratings, and advanced marketplace features
+4. Deeper tool-call visualization + conversation history UI
+5. Parallel multi-agent and richer supervisor routing
 
 ## Architecture Notes
 - Clean modular design: models / schemas / api / agents / services
