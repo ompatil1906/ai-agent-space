@@ -22,6 +22,7 @@ class UserInDB(UserBase):
     id: int
     is_active: bool
     is_superuser: bool
+    credits: int = 1000
     created_at: datetime
     updated_at: datetime
 
@@ -52,6 +53,7 @@ class AgentBase(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     tools_config: List[Dict[str, Any]] = Field(default_factory=list)
     memory_config: Dict[str, Any] = Field(default_factory=dict)
+    workflow_config: Dict[str, Any] = Field(default_factory=dict)
     is_public: bool = False
     is_published: bool = False
     price: int = Field(default=0, ge=0)
@@ -69,6 +71,7 @@ class AgentUpdate(BaseModel):
     temperature: Optional[float] = None
     tools_config: Optional[List[Dict[str, Any]]] = None
     memory_config: Optional[Dict[str, Any]] = None
+    workflow_config: Optional[Dict[str, Any]] = None
     is_public: Optional[bool] = None
     is_published: Optional[bool] = None
     price: Optional[int] = None

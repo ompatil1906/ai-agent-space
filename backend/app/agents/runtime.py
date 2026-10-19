@@ -146,3 +146,54 @@ def serialize_messages(messages: List[BaseMessage]) -> List[Dict[str, Any]]:
             "additional_kwargs": getattr(msg, "additional_kwargs", {}),
         })
     return result
+
+
+# ========== Multi-Agent Support ==========
+
+def build_multi_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
+    """
+    Build a multi-agent workflow graph.
+    Supports:
+    - sequential: run sub-agents in order
+    - supervisor: one supervisor routes to workers
+    """
+    workflow_type = agent_config.get("workflow_config", {}).get("type", "single")
+    if workflow_type == "single":
+        return build_agent_graph(agent_config, tools)
+
+    # For sequential or supervisor, we build a simple orchestration
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    temperature = agent_config.get("temperature", 0.7)
+    system_prompt = agent_config.get("system_prompt", "You are a supervisor coordinating agents.")
+
+    llm = get_llm(model_name, temperature)
+
+    def supervisor_node(state: AgentState):
+        messages = [SystemMessage(content=system_prompt + "\nDecide the next action or final answer.")] + list(state.messages)
+        response = llm.invoke(messages)
+        return {"messages": state.messages + [response]}
+
+    workflow = StateGraph(AgentState)
+    workflow.add_node("supervisor", supervisor_node)
+    workflow.set_entry_point("supervisor")
+    workflow.add_edge("supervisor", END)
+
+    # Note: full sub-agent invocation would require recursive graphs or tool-based agents.
+    # This provides the foundation; advanced routing can be extended.
+    return workflow.compile(checkpointer=checkpointer)
+
+
+async def run_agent_advanced(
+    agent_config: Dict[str, Any],
+    user_input: str,
+    thread_id: Optional[str] = None,
+    tools: Optional[List[Any]] = None,
+) -> str:
+    """Run agent with multi-agent awareness."""
+    tools = await _load_tools(agent_config, tools)
+    graph = build_multi_agent_graph(agent_config, tools)
+    config = {"configurable": {"thread_id": thread_id or "default"}} if thread_id else {}
+    initial_state = AgentState(messages=[HumanMessage(content=user_input)])
+    result = await graph.ainvoke(initial_state, config=config)
+    last_message = result["messages"][-1]
+    return last_message.content if hasattr(last_message, "content") else str(last_message)

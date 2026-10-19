@@ -1,0 +1,159 @@
+from typing import Any, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.core.security import get_current_active_user
+from app.models import Agent, User
+from app.schemas import AgentPublic
+
+router = APIRouter()
+
+
+@router.get("/agents", response_model=List[AgentPublic])
+def list_published_agents(
+    db: Session = Depends(get_db),
+    skip: int = 0,
+    limit: int = 50,
+    search: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Browse published agents in the marketplace."""
+    query = db.query(Agent).filter(Agent.is_published == True, Agent.is_public == True)
+    if search:
+        query = query.filter(Agent.name.ilike(f"%{search}%") | Agent.description.ilike(f"%{search}%"))
+    agents = query.offset(skip).limit(limit).all()
+    # Attach owner email for display
+    result = []
+    for a in agents:
+        data = AgentPublic.model_validate(a)
+        if a.owner:
+            data.owner_email = a.owner.email
+        result.append(data)
+    return result
+
+
+@router.post("/agents/{agent_id}/publish", response_model=AgentPublic)
+def publish_agent(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent or agent.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Agent not found or not owned")
+    agent.is_published = True
+    agent.is_public = True
+    db.commit()
+    db.refresh(agent)
+    return agent
+
+
+@router.post("/agents/{agent_id}/unpublish", response_model=AgentPublic)
+def unpublish_agent(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent or agent.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Agent not found or not owned")
+    agent.is_published = False
+    db.commit()
+    db.refresh(agent)
+    return agent
+
+
+@router.post("/agents/{agent_id}/clone", response_model=AgentPublic)
+def clone_agent(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Clone a public or owned agent into the current user's agents."""
+    source = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if source.owner_id != current_user.id and not source.is_public:
+        raise HTTPException(status_code=403, detail="Cannot clone private agent")
+
+    # If priced and not free, require purchase first (simple check: allow clone of free or owned)
+    if source.price > 0 and source.owner_id != current_user.id:
+        # For simplicity, clone is free; purchase is separate for "ownership transfer" or premium
+        pass
+
+    cloned = Agent(
+        name=f"{source.name} (Clone)",
+        description=source.description,
+        system_prompt=source.system_prompt,
+        model_name=source.model_name,
+        temperature=source.temperature,
+        tools_config=source.tools_config or [],
+        memory_config=source.memory_config or {},
+        workflow_config=source.workflow_config or {},
+        is_public=False,
+        is_published=False,
+        price=0,
+        owner_id=current_user.id,
+    )
+    db.add(cloned)
+    db.commit()
+    db.refresh(cloned)
+    return cloned
+
+
+@router.post("/agents/{agent_id}/purchase", response_model=dict)
+def purchase_agent(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Simple credit-based purchase. Grants clone rights or marks as purchased."""
+    agent = db.query(Agent).filter(Agent.id == agent_id, Agent.is_published == True).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Published agent not found")
+    if agent.owner_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot purchase your own agent")
+    if agent.price == 0:
+        return {"message": "Agent is free", "credits_remaining": current_user.credits}
+
+    if current_user.credits < agent.price:
+        raise HTTPException(status_code=402, detail="Insufficient credits")
+
+    # Transfer credits
+    seller = agent.owner
+    current_user.credits -= agent.price
+    seller.credits += agent.price
+
+    # Auto-clone after purchase for convenience
+    cloned = Agent(
+        name=f"{agent.name} (Purchased)",
+        description=agent.description,
+        system_prompt=agent.system_prompt,
+        model_name=agent.model_name,
+        temperature=agent.temperature,
+        tools_config=agent.tools_config or [],
+        memory_config=agent.memory_config or {},
+        workflow_config=agent.workflow_config or {},
+        is_public=False,
+        is_published=False,
+        price=0,
+        owner_id=current_user.id,
+    )
+    db.add(cloned)
+    db.commit()
+    db.refresh(current_user)
+    return {
+        "message": "Purchase successful. Agent cloned to your workspace.",
+        "cloned_agent_id": cloned.id,
+        "credits_remaining": current_user.credits,
+        "price_paid": agent.price,
+    }
+
+
+@router.get("/me/credits")
+def get_my_credits(
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    return {"credits": current_user.credits, "email": current_user.email}

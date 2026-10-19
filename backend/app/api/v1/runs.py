@@ -32,6 +32,7 @@ async def run_agent_endpoint(
         "system_prompt": agent.system_prompt,
         "tools_config": agent.tools_config or [],
         "memory_config": agent.memory_config or {},
+        "workflow_config": agent.workflow_config or {},
     }
 
     # Create run record
@@ -82,6 +83,7 @@ async def stream_agent_endpoint(
         "system_prompt": agent.system_prompt,
         "tools_config": agent.tools_config or [],
         "memory_config": agent.memory_config or {},
+        "workflow_config": agent.workflow_config or {},
     }
 
     run = AgentRun(

@@ -13,6 +13,7 @@ class User(Base):
     full_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
+    credits = Column(Integer, default=1000)  # marketplace credits
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -31,6 +32,7 @@ class Agent(Base):
     temperature = Column(Float, default=0.7)
     tools_config = Column(JSON, default=list)  # list of tool configs / MCP server URLs or configs
     memory_config = Column(JSON, default=dict)  # memory settings e.g. {"enabled": true, "thread_id": "..."}
+    workflow_config = Column(JSON, default=dict)  # multi-agent: {"type": "single|sequential|supervisor", "sub_agents": [...]}
     is_public = Column(Boolean, default=False)
     is_published = Column(Boolean, default=False)
     price = Column(Integer, default=0)  # in cents or credits

@@ -16,6 +16,8 @@ interface Agent {
   model_name: string;
   temperature: number;
   is_public: boolean;
+  is_published?: boolean;
+  price?: number;
   tools_config?: any[];
 }
 
@@ -60,6 +62,33 @@ export default function AgentsPage() {
       setAgents(await res.json());
     }
   };
+  const publishAgent = async (id: number, publish: boolean) => {
+    if (!token) return;
+    const endpoint = publish ? "publish" : "unpublish";
+    const res = await fetch(`${API_BASE}/marketplace/agents/${id}/${endpoint}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      fetchAgents(token);
+    } else {
+      const err = await res.json();
+      alert(err.detail || "Failed");
+    }
+  };
+
+  const cloneAgent = async (id: number) => {
+    if (!token) return;
+    const res = await fetch(`${API_BASE}/marketplace/agents/${id}/clone`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      fetchAgents(token);
+      alert("Cloned to your agents!");
+    }
+  };
+
 
   const discoverTools = async () => {
     if (!token) return;
@@ -131,9 +160,14 @@ export default function AgentsPage() {
     <div className="container mx-auto p-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">My Agents</h1>
-        <Button onClick={() => setShowCreate(!showCreate)}>
-          {showCreate ? "Cancel" : "Create Agent"}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => (window.location.href = "/marketplace")}>
+            Marketplace
+          </Button>
+          <Button onClick={() => setShowCreate(!showCreate)}>
+            {showCreate ? "Cancel" : "Create Agent"}
+          </Button>
+        </div>
       </div>
 
       {showCreate && (
@@ -212,9 +246,15 @@ export default function AgentsPage() {
               {agent.tools_config && agent.tools_config.length > 0 && (
                 <p className="text-xs text-green-600">MCP Tools: {agent.tools_config.length} server(s)</p>
               )}
-              <div className="mt-4 flex gap-2">
+              <div className="mt-4 flex gap-2 flex-wrap">
                 <Button size="sm" variant="outline" asChild>
                   <a href={`/agents/${agent.id}`}>View / Run</a>
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => publishAgent(agent.id, !agent.is_published)}>
+                  {agent.is_published ? "Unpublish" : "Publish"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => cloneAgent(agent.id)}>
+                  Clone
                 </Button>
               </div>
             </CardContent>

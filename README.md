@@ -38,12 +38,10 @@ python examples/example_mcp_server.py
 - Agent CRUD (create, list, get, update, delete)
 - Agent run history persistence
 - LangGraph agent runtime with **streaming (SSE)** and conversation memory (MemorySaver checkpointer)
-- **Real MCP integration** via langchain-mcp-adapters:
-  - stdio, streamable_http, and sse transports
-  - Tool discovery and automatic LangChain tool binding
-  - Tools injected into LangGraph ToolNode
-  - Discover tools API for the builder UI
-- Frontend: Login, Register, Agents list + create (with MCP tools_config JSON + Discover), Agent run page with streaming toggle
+- **Real MCP integration** via langchain-mcp-adapters (stdio / http / sse)
+- **Marketplace**: publish, browse, search, clone, credit-based purchase (auto-clone)
+- Multi-agent foundation (workflow_config: single / sequential / supervisor)
+- Frontend: Login, Register, Agents (with publish/clone), Marketplace page, Agent runner with streaming
 
 ## Tech Stack
 - Frontend: Next.js 15 + TypeScript + Tailwind + shadcn/ui
@@ -53,11 +51,11 @@ python examples/example_mcp_server.py
 - Database: SQLite (dev) → PostgreSQL ready
 
 ## Next Priorities
-1. Agent Builder UI improvements (visual MCP server config, memory settings)
-2. Marketplace (publish, browse, clone, simple buy/sell)
-3. Multi-agent workflows & orchestration
-4. Persistent checkpointer (Postgres) + evaluation
-5. Advanced memory and versioning
+1. Visual Agent Builder (drag-drop MCP config, memory settings UI)
+2. Full multi-agent orchestration (supervisor routing, sequential pipelines, parallel)
+3. Persistent checkpointer (PostgresSaver) + evaluation harness
+4. Agent versioning, ratings, and advanced marketplace features
+5. Tool call visualization in streaming UI
 
 ## Architecture Notes
 - Clean modular design: models / schemas / api / agents / services
@@ -80,3 +78,7 @@ python examples/example_mcp_server.py
     }
   ]
   ```
+
+
+## Database Schema Note
+New fields (credits, workflow_config) were added. For existing SQLite DBs, delete `backend/*.db` (or the app.db) and restart the backend so create_all rebuilds tables. Fresh installs work immediately.
