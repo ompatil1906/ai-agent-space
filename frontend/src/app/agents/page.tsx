@@ -6,6 +6,8 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { API_BASE } from "@/lib/api";
+import AgentBuilder from "@/components/AgentBuilder";
 
 interface Agent {
   id: number;

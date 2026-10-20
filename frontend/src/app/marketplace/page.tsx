@@ -193,7 +193,7 @@ export default function MarketplacePage() {
       <div className="flex flex-wrap gap-3 mb-6 items-end">
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Min Rating</label>
-          <Select value={minRating} onValueChange={setMinRating}>
+          <Select value={minRating} onValueChange={(val) => setMinRating(val ?? "")}>
             <SelectTrigger className="w-32">
               <SelectValue placeholder="Any" />
             </SelectTrigger>
@@ -207,7 +207,7 @@ export default function MarketplacePage() {
         </div>
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Price</label>
-          <Select value={priceFilter} onValueChange={setPriceFilter}>
+          <Select value={priceFilter} onValueChange={(val) => setPriceFilter(val ?? "all")}>
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
@@ -220,7 +220,7 @@ export default function MarketplacePage() {
         </div>
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Sort by</label>
-          <Select value={sortBy} onValueChange={setSortBy}>
+          <Select value={sortBy} onValueChange={(val) => setSortBy(val ?? "created")}>
             <SelectTrigger className="w-36">
               <SelectValue />
             </SelectTrigger>

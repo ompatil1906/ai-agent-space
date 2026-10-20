@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ interface Summary {
   recent: Evaluation[];
 }
 
-export default function EvaluationsPage() {
+function EvaluationsContent() {
   const params = useParams();
   const agentId = params.id as string;
   const [token, setToken] = useState<string | null>(null);
@@ -193,5 +193,19 @@ export default function EvaluationsPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function EvaluationsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-muted-foreground">Loading evaluations...</p>
+        </div>
+      }
+    >
+      <EvaluationsContent />
+    </Suspense>
   );
 }
