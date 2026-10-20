@@ -39,6 +39,8 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [tools, setTools] = useState<ToolConfig[]>(initial?.tools_config || []);
   const [memoryEnabled, setMemoryEnabled] = useState(initial?.memory_config?.enabled ?? true);
   const [maxMessages, setMaxMessages] = useState<number>(initial?.memory_config?.max_messages ?? 20);
+  const [longtermEnabled, setLongtermEnabled] = useState(initial?.memory_config?.longterm_enabled ?? false);
+  const [longtermK, setLongtermK] = useState<number>(initial?.memory_config?.longterm_k ?? 5);
   const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce">(
     initial?.workflow_config?.type || "single"
   );
@@ -112,7 +114,13 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
         model_name: modelName,
         temperature,
         tools_config,
-        memory_config: { enabled: memoryEnabled, max_messages: maxMessages, type: "window" },
+        memory_config: { 
+          enabled: memoryEnabled, 
+          max_messages: maxMessages, 
+          type: longtermEnabled ? "hybrid" : "window",
+          longterm_enabled: longtermEnabled,
+          longterm_k: longtermK,
+        },
         workflow_config,
       };
 
@@ -210,29 +218,55 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="memory"
-              checked={memoryEnabled}
-              onChange={(e) => setMemoryEnabled(e.target.checked)}
-            />
-            <label htmlFor="memory" className="text-sm font-medium">
-              Enable conversation memory (thread-based)
-            </label>
-            {memoryEnabled && (
-              <div className="flex items-center gap-2 ml-6 text-sm">
-                <span>Max messages:</span>
-                <Input
-                  type="number"
-                  min={2}
-                  max={100}
-                  className="w-20 h-8"
-                  value={maxMessages}
-                  onChange={(e) => setMaxMessages(parseInt(e.target.value) || 20)}
-                />
-              </div>
-            )}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="memory"
+                checked={memoryEnabled}
+                onChange={(e) => setMemoryEnabled(e.target.checked)}
+              />
+              <label htmlFor="memory" className="text-sm font-medium">
+                Enable conversation memory (thread-based windowing)
+              </label>
+              {memoryEnabled && (
+                <div className="flex items-center gap-2 ml-6 text-sm">
+                  <span>Max messages:</span>
+                  <Input
+                    type="number"
+                    min={2}
+                    max={100}
+                    className="w-20 h-8"
+                    value={maxMessages}
+                    onChange={(e) => setMaxMessages(parseInt(e.target.value) || 20)}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="longterm"
+                checked={longtermEnabled}
+                onChange={(e) => setLongtermEnabled(e.target.checked)}
+              />
+              <label htmlFor="longterm" className="text-sm font-medium">
+                Enable long-term semantic memory (vector store)
+              </label>
+              {longtermEnabled && (
+                <div className="flex items-center gap-2 ml-6 text-sm">
+                  <span>Retrieve k:</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={20}
+                    className="w-20 h-8"
+                    value={longtermK}
+                    onChange={(e) => setLongtermK(parseInt(e.target.value) || 5)}
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
           <div>

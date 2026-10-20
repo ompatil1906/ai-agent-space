@@ -87,6 +87,70 @@ def _should_continue(state: AgentState) -> str:
     return END
 
 
+
+
+def get_enhanced_system_prompt(
+    base_prompt: str,
+    agent_config: Dict[str, Any],
+    state: AgentState,
+) -> str:
+    """Inject relevant long-term memories into the system prompt when enabled."""
+    mem_cfg = agent_config.get("memory_config") or {}
+    if not mem_cfg.get("longterm_enabled"):
+        return base_prompt
+
+    agent_id = agent_config.get("id")
+    user_id = agent_config.get("user_id")
+    if not agent_id or not user_id:
+        return base_prompt
+
+    # Use the most recent human message as the retrieval query
+    query = ""
+    for msg in reversed(state.get("messages", [])):
+        if isinstance(msg, HumanMessage):
+            query = getattr(msg, "content", "") or ""
+            break
+    if not query:
+        return base_prompt
+
+    try:
+        from app.services.memory_service import get_memory_service
+        k = int(mem_cfg.get("longterm_k", 5))
+        memories = get_memory_service().retrieve(int(agent_id), int(user_id), query, k=k)
+        if not memories:
+            return base_prompt
+        mem_block = "\n".join(f"- {m}" for m in memories)
+        return f"{base_prompt}\n\nRelevant long-term memories (use if helpful):\n{mem_block}"
+    except Exception as e:
+        logger.debug("Long-term memory retrieval skipped: %s", e)
+        return base_prompt
+
+
+def store_interaction_memory(
+    agent_config: Dict[str, Any],
+    user_input: str,
+    agent_output: str,
+) -> None:
+    """Persist a short interaction summary as long-term memory."""
+    mem_cfg = agent_config.get("memory_config") or {}
+    if not mem_cfg.get("longterm_enabled"):
+        return
+    agent_id = agent_config.get("id")
+    user_id = agent_config.get("user_id")
+    if not agent_id or not user_id or not user_input or not agent_output:
+        return
+    try:
+        from app.services.memory_service import get_memory_service
+        text = f"User: {user_input[:500]}\nAssistant: {agent_output[:1000]}"
+        get_memory_service().add_memory(
+            int(agent_id),
+            int(user_id),
+            text,
+            metadata={"source": "interaction"},
+        )
+    except Exception as e:
+        logger.debug("Failed to store long-term memory: %s", e)
+
 def build_single_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """Build a standard ReAct-style agent with optional tools."""
     model_name = agent_config.get("model_name", "gpt-4o-mini")
@@ -101,7 +165,8 @@ def build_single_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[
     def call_model(state: AgentState):
         mem_cfg = agent_config.get("memory_config") or {}
         history = apply_memory_window(state["messages"], mem_cfg)
-        messages = [SystemMessage(content=system_prompt)] + history
+        enhanced = get_enhanced_system_prompt(system_prompt, agent_config, state)
+        messages = [SystemMessage(content=enhanced)] + history
         response = llm.invoke(messages)
         response.additional_kwargs = response.additional_kwargs or {}
         response.additional_kwargs["agent"] = agent_config.get("name", "agent")
@@ -142,7 +207,8 @@ def build_sequential_graph(agent_config: Dict[str, Any], tools: Optional[List[An
 
     def make_agent_node(prompt: str, name: str):
         def node(state: AgentState):
-            messages = [SystemMessage(content=prompt)] + state["messages"]
+            enhanced = get_enhanced_system_prompt(prompt, agent_config, state)
+            messages = [SystemMessage(content=enhanced)] + state["messages"]
             response = llm.invoke(messages)
             response.additional_kwargs = response.additional_kwargs or {}
             response.additional_kwargs["agent"] = name
@@ -201,7 +267,8 @@ def build_supervisor_graph(agent_config: Dict[str, Any], tools: Optional[List[An
     workflow = StateGraph(AgentState)
 
     def supervisor_node(state: AgentState):
-        messages = [SystemMessage(content=supervisor_prompt)] + state["messages"]
+        enhanced = get_enhanced_system_prompt(supervisor_prompt, agent_config, state)
+        messages = [SystemMessage(content=enhanced)] + state["messages"]
         response = base_llm.invoke(messages)
         content = (response.content or "").strip().upper()
         next_worker = None
@@ -221,7 +288,8 @@ def build_supervisor_graph(agent_config: Dict[str, Any], tools: Optional[List[An
             llm = base_llm
             if tools:
                 llm = llm.bind_tools(tools)
-            messages = [SystemMessage(content=prompt)] + state["messages"]
+            enhanced = get_enhanced_system_prompt(prompt, agent_config, state)
+            messages = [SystemMessage(content=enhanced)] + state["messages"]
             response = llm.invoke(messages)
             response.additional_kwargs = response.additional_kwargs or {}
             response.additional_kwargs["agent"] = name
@@ -278,7 +346,8 @@ def build_parallel_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]
         async def run_one(sa: Dict[str, Any]):
             name = sa.get("name", "specialist")
             prompt = sa.get("system_prompt", "You are a specialist.")
-            messages = [SystemMessage(content=prompt)] + state["messages"]
+            enhanced = get_enhanced_system_prompt(prompt, agent_config, state)
+            messages = [SystemMessage(content=enhanced)] + state["messages"]
             try:
                 response = await llm.ainvoke(messages)
                 response.additional_kwargs = response.additional_kwargs or {}
@@ -306,7 +375,8 @@ def build_parallel_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]
             "complete final answer for the user. Be concise and accurate.\n\n"
             + "\n\n".join(specialist_outputs)
         )
-        messages = [SystemMessage(content=synth_prompt)] + [
+        enhanced = get_enhanced_system_prompt(synth_prompt, agent_config, state)
+        messages = [SystemMessage(content=enhanced)] + [
             m for m in state["messages"] if not getattr(m, "additional_kwargs", {}).get("agent")
         ]
         response = llm.invoke(messages)
@@ -348,7 +418,8 @@ def build_debate_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] 
 
     def make_debater(prompt: str, name: str):
         def node(state: AgentState):
-            messages = [SystemMessage(content=prompt)] + state["messages"]
+            enhanced = get_enhanced_system_prompt(prompt, agent_config, state)
+            messages = [SystemMessage(content=enhanced)] + state["messages"]
             response = llm.invoke(messages)
             response.additional_kwargs = response.additional_kwargs or {}
             response.additional_kwargs["agent"] = name
@@ -370,7 +441,8 @@ def build_debate_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] 
             "and gives a clear recommendation or final answer.\n\n"
             f"PRO:\n{pro_out}\n\nCON:\n{con_out}"
         )
-        messages = [SystemMessage(content=judge_prompt)] + [
+        enhanced = get_enhanced_system_prompt(judge_prompt, agent_config, state)
+        messages = [SystemMessage(content=enhanced)] + [
             m for m in state["messages"] if not getattr(m, "additional_kwargs", {}).get("agent")
         ]
         response = llm.invoke(messages)
@@ -415,7 +487,8 @@ def build_map_reduce_graph(agent_config: Dict[str, Any], tools: Optional[List[An
 
     def make_mapper(prompt: str, name: str):
         def node(state: AgentState):
-            messages = [SystemMessage(content=prompt)] + state["messages"]
+            enhanced = get_enhanced_system_prompt(prompt, agent_config, state)
+            messages = [SystemMessage(content=enhanced)] + state["messages"]
             response = base_llm.invoke(messages)
             response.additional_kwargs = response.additional_kwargs or {}
             response.additional_kwargs["agent"] = name
@@ -436,7 +509,7 @@ def build_map_reduce_graph(agent_config: Dict[str, Any], tools: Optional[List[An
             f"[{m.additional_kwargs.get('agent', 'mapper')}]: {m.content}" for m in mapper_outputs
         )
         messages = [
-            SystemMessage(content=reducer_prompt),
+            SystemMessage(content=get_enhanced_system_prompt(reducer_prompt, agent_config, state)),
             HumanMessage(content=f"Specialist outputs:\n{context}\n\nOriginal request context is in prior messages."),
         ] + state["messages"][-1:]  # include latest user message if needed
         response = base_llm.invoke(messages)
@@ -512,7 +585,9 @@ async def run_agent(
     initial_state = {"messages": [HumanMessage(content=user_input)]}
     result = await graph.ainvoke(initial_state, config=config)
     last_message = result["messages"][-1]
-    return last_message.content if hasattr(last_message, "content") else str(last_message)
+    output = last_message.content if hasattr(last_message, "content") else str(last_message)
+    store_interaction_memory(agent_config, user_input, output)
+    return output
 
 
 async def stream_agent(
@@ -588,6 +663,7 @@ async def stream_agent(
                             "content": content[:1000],
                         }
 
+        store_interaction_memory(agent_config, user_input, full_output)
         yield {"type": "done", "content": full_output}
 
     except Exception as e:

@@ -36,3 +36,7 @@ dist/
 .vscode/
 *.swp
 *.swo
+
+# Long-term memory vector store
+backend/chroma_memory/
+chroma_memory/

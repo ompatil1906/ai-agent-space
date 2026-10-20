@@ -27,6 +27,9 @@ async def run_agent_endpoint(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     agent_config = {
+        "id": agent.id,
+        "user_id": current_user.id,
+        "name": agent.name,
         "model_name": agent.model_name,
         "temperature": agent.temperature,
         "system_prompt": agent.system_prompt,
@@ -84,6 +87,9 @@ async def stream_agent_endpoint(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     agent_config = {
+        "id": agent.id,
+        "user_id": current_user.id,
+        "name": agent.name,
         "model_name": agent.model_name,
         "temperature": agent.temperature,
         "system_prompt": agent.system_prompt,
@@ -169,6 +175,9 @@ async def evaluate_agent(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     agent_config = {
+        "id": agent.id,
+        "user_id": current_user.id,
+        "name": agent.name,
         "model_name": agent.model_name,
         "temperature": agent.temperature,
         "system_prompt": agent.system_prompt,
@@ -221,6 +230,9 @@ async def batch_evaluate_agent(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     agent_config = {
+        "id": agent.id,
+        "user_id": current_user.id,
+        "name": agent.name,
         "model_name": agent.model_name,
         "temperature": agent.temperature,
         "system_prompt": agent.system_prompt,

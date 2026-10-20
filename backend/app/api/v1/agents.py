@@ -254,3 +254,21 @@ async def mcp_health_check(
     """Perform a health check against the configured MCP servers."""
     result = await mcp_service.health_check(tools_config)
     return result
+
+
+@router.post("/{agent_id}/memory/clear")
+def clear_agent_memory(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Clear long-term semantic memories for the current user on this agent."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.owner_id != current_user.id and not agent.is_public:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    from app.services.memory_service import get_memory_service
+    deleted = get_memory_service().clear_for_agent_user(agent_id, current_user.id)
+    return {"cleared": deleted, "agent_id": agent_id, "user_id": current_user.id}
