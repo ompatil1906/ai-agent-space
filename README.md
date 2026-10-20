@@ -8,6 +8,7 @@ A modern, advanced platform for creating, configuring, running, and sharing AI a
 - **Local / Open-Source Models**: Set `OPENAI_BASE_URL` (or per-agent `base_url`) to any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, etc.). Dummy API key works for local servers.
 - **Memory Windowing**: `memory_config.max_messages` trims conversation history before each LLM call (default 20).
 - **Long-Term Semantic Memory**: Optional vector-store memory (ChromaDB + embeddings). Set `memory_config.longterm_enabled=true` and `longterm_k` (default 5). Relevant past interactions are retrieved and injected into the system prompt. Interactions are automatically stored after each run.
+- **Long-Term Memory Management**: `GET /api/v1/agents/{id}/memories` to list stored semantic memories; existing clear endpoint for cleanup. Memories are scoped per user+agent.
 - **Multi-Agent Patterns**: single, sequential, supervisor, parallel, debate.
 - **Streaming Events**: tokens, tool calls/results, and multi-agent step progress.
 - **MCP Tool Discovery & Execution**: Real tool use via official MCP SDK + adapters.

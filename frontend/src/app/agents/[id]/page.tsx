@@ -26,6 +26,8 @@ function AgentRunContent() {
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [finalOutput, setFinalOutput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [memories, setMemories] = useState<any[]>([]);
+  const [loadingMemories, setLoadingMemories] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(true);
   const [threadId, setThreadId] = useState<string>("");
@@ -33,6 +35,26 @@ function AgentRunContent() {
   const [selectedRun, setSelectedRun] = useState<any>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
+
+  
+  const loadMemories = async () => {
+    if (!agentId) return;
+    setLoadingMemories(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/agents/${agentId}/memories`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMemories(data.memories || []);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingMemories(false);
+    }
+  };
 
   useEffect(() => {
     const t = localStorage.getItem("token");
@@ -385,6 +407,28 @@ function AgentRunContent() {
           </p>
           <p className="font-mono text-xs">
             <span className="text-muted-foreground">workflow:</span> {JSON.stringify(agent?.workflow_config || {})}
+
+          <div className="mt-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Long-term Memories</h3>
+              <Button size="sm" variant="outline" onClick={loadMemories} disabled={loadingMemories}>
+                {loadingMemories ? "Loading..." : "Refresh"}
+              </Button>
+            </div>
+            {memories.length === 0 ? (
+              <p className="text-xs text-muted-foreground mt-2">No long-term memories stored yet.</p>
+            ) : (
+              <div className="mt-2 space-y-2 max-h-48 overflow-auto">
+                {memories.map((m) => (
+                  <div key={m.id} className="text-xs border rounded p-2">
+                    <div className="font-mono text-muted-foreground">{m.id.slice(0, 8)}...</div>
+                    <div className="mt-1">{m.text.slice(0, 200)}{m.text.length > 200 ? "..." : ""}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           </p>
         </CardContent>
       </Card>

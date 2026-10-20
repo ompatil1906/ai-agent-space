@@ -272,3 +272,22 @@ def clear_agent_memory(
     from app.services.memory_service import get_memory_service
     deleted = get_memory_service().clear_for_agent_user(agent_id, current_user.id)
     return {"cleared": deleted, "agent_id": agent_id, "user_id": current_user.id}
+
+
+@router.get("/{agent_id}/memories")
+def list_agent_memories(
+    agent_id: int,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """List long-term semantic memories for the current user on this agent."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.owner_id != current_user.id and not agent.is_public:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    from app.services.memory_service import get_memory_service
+    memories = get_memory_service().list_memories(agent_id, current_user.id, limit=limit)
+    return {"agent_id": agent_id, "user_id": current_user.id, "count": len(memories), "memories": memories}

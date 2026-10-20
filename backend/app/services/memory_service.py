@@ -137,8 +137,47 @@ class LongTermMemoryService:
             return 0
 
 
+
+    def list_memories(
+        self,
+        agent_id: int,
+        user_id: int,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """List stored memories for an agent+user with metadata."""
+        if not self._available:
+            return []
+        try:
+            results = self.collection.get(
+                where={
+                    "$and": [
+                        {"agent_id": int(agent_id)},
+                        {"user_id": int(user_id)},
+                    ]
+                },
+                limit=limit,
+            )
+            memories = []
+            ids = results.get("ids") or []
+            docs = results.get("documents") or []
+            metas = results.get("metadatas") or []
+            for i, mid in enumerate(ids):
+                memories.append({
+                    "id": mid,
+                    "text": docs[i] if i < len(docs) else "",
+                    "metadata": metas[i] if i < len(metas) else {},
+                })
+            return memories
+        except Exception as e:
+            logger.warning("Failed to list memories: %s", e)
+            return []
+
+
 def get_memory_service() -> LongTermMemoryService:
     global _memory_service
     if _memory_service is None:
         _memory_service = LongTermMemoryService()
     return _memory_service
+
+
+    
