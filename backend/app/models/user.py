@@ -106,6 +106,27 @@ class AgentRating(Base):
     user = relationship("User", back_populates="ratings")
 
 
+class AgentEvaluation(Base):
+    """Persisted evaluation results (LLM-as-judge) for agents."""
+    __tablename__ = "agent_evaluations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    input = Column(Text, nullable=False)
+    agent_output = Column(Text, nullable=True)
+    score = Column(Float, nullable=False)  # 1-10
+    explanation = Column(Text, nullable=True)
+    criteria = Column(String, nullable=True)
+    criteria_scores = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    agent = relationship("Agent", back_populates="evaluations")
+    user = relationship("User", back_populates="evaluations")
+
+
 # Add relationships to existing models
 User.ratings = relationship("AgentRating", back_populates="user", cascade="all, delete-orphan")
+User.evaluations = relationship("AgentEvaluation", back_populates="user", cascade="all, delete-orphan")
 Agent.ratings = relationship("AgentRating", back_populates="agent", cascade="all, delete-orphan")
+Agent.evaluations = relationship("AgentEvaluation", back_populates="agent", cascade="all, delete-orphan")

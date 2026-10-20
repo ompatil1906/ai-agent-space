@@ -154,6 +154,28 @@ class BatchEvaluateResponse(BaseModel):
     count: int
 
 
+class AgentEvaluationPublic(BaseModel):
+    id: int
+    agent_id: int
+    user_id: int
+    input: str
+    agent_output: Optional[str] = None
+    score: float
+    explanation: Optional[str] = None
+    criteria: Optional[str] = None
+    criteria_scores: Optional[Dict[str, Any]] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class EvaluationSummary(BaseModel):
+    count: int
+    average_score: float
+    recent: List[AgentEvaluationPublic]
+
+
 # Versioning schemas
 class AgentVersionBase(BaseModel):
     version_number: int

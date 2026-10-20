@@ -386,6 +386,85 @@ def build_debate_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] 
     return workflow.compile(checkpointer=checkpointer)
 
 
+def build_map_reduce_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
+    """
+    Map-Reduce multi-agent pattern.
+    Map: fan-out to multiple specialist workers on the same input (or chunks).
+    Reduce: a synthesizer aggregates all worker outputs into a final answer.
+    """
+    wf = agent_config.get("workflow_config") or {}
+    mappers = wf.get("mappers") or wf.get("sub_agents") or []
+    if not mappers:
+        return build_single_agent_graph(agent_config, tools)
+
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    temperature = agent_config.get("temperature", 0.7)
+    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
+    base_llm = get_llm(model_name, temperature, base_url)
+    if tools:
+        base_llm = base_llm.bind_tools(tools)
+
+    reducer_prompt = wf.get(
+        "reducer_prompt",
+        "You are a synthesizer. Combine the specialist outputs into one coherent, high-quality final answer. "
+        "Cite key points from each specialist where relevant.",
+    )
+
+    workflow = StateGraph(AgentState)
+
+    def make_mapper(prompt: str, name: str):
+        def node(state: AgentState):
+            messages = [SystemMessage(content=prompt)] + state["messages"]
+            response = base_llm.invoke(messages)
+            response.additional_kwargs = response.additional_kwargs or {}
+            response.additional_kwargs["agent"] = name
+            response.additional_kwargs["role"] = "mapper"
+            return {"messages": [response]}
+        return node
+
+    def reducer_node(state: AgentState):
+        # Collect recent mapper outputs (last N messages that are from mappers)
+        mapper_outputs = []
+        for msg in reversed(state["messages"]):
+            if isinstance(msg, AIMessage) and msg.additional_kwargs.get("role") == "mapper":
+                mapper_outputs.append(msg)
+            if len(mapper_outputs) >= len(mappers):
+                break
+        mapper_outputs.reverse()
+        context = "\n\n".join(
+            f"[{m.additional_kwargs.get('agent', 'mapper')}]: {m.content}" for m in mapper_outputs
+        )
+        messages = [
+            SystemMessage(content=reducer_prompt),
+            HumanMessage(content=f"Specialist outputs:\n{context}\n\nOriginal request context is in prior messages."),
+        ] + state["messages"][-1:]  # include latest user message if needed
+        response = base_llm.invoke(messages)
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = "reducer"
+        return {"messages": [response]}
+
+    # Simple sequential map for reliability (can be parallelized later with Send)
+    prev = None
+    for i, m in enumerate(mappers):
+        name = m.get("name", f"mapper_{i}")
+        prompt = m.get("system_prompt", "You are a specialist mapper.")
+        workflow.add_node(name, make_mapper(prompt, name))
+        if prev is None:
+            workflow.set_entry_point(name)
+        else:
+            workflow.add_edge(prev, name)
+        prev = name
+
+    workflow.add_node("reducer", reducer_node)
+    if prev:
+        workflow.add_edge(prev, "reducer")
+    else:
+        workflow.set_entry_point("reducer")
+    workflow.add_edge("reducer", END)
+
+    return workflow.compile(checkpointer=checkpointer)
+
+
 def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """Dispatch to the correct graph builder based on workflow_config.type."""
     wf_type = (agent_config.get("workflow_config") or {}).get("type", "single")
@@ -397,6 +476,8 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
         return build_parallel_graph(agent_config, tools)
     if wf_type == "debate":
         return build_debate_graph(agent_config, tools)
+    if wf_type == "map_reduce":
+        return build_map_reduce_graph(agent_config, tools)
     return build_single_agent_graph(agent_config, tools)
 
 

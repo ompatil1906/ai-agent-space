@@ -7,8 +7,8 @@ from sse_starlette.sse import EventSourceResponse
 from app.agents.runtime import run_agent, stream_agent, evaluate_output
 from app.core.database import get_db
 from app.core.security import get_current_active_user
-from app.models import Agent, AgentRun, User
-from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse, BatchEvaluateRequest, BatchEvaluateResponse
+from app.models import Agent, AgentRun, User, AgentEvaluation
+from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse, BatchEvaluateRequest, BatchEvaluateResponse, AgentEvaluationPublic, EvaluationSummary
 
 router = APIRouter()
 
@@ -182,8 +182,22 @@ async def evaluate_agent(
         eval_result = await evaluate_output(
             agent_config, request.input, output, criteria=request.criteria or "helpfulness, accuracy, and clarity"
         )
+        score = float(eval_result.get("score", 5))
+        # Persist evaluation
+        evaluation = AgentEvaluation(
+            agent_id=agent.id,
+            user_id=current_user.id,
+            input=request.input,
+            agent_output=output,
+            score=score,
+            explanation=eval_result.get("explanation", ""),
+            criteria=request.criteria,
+            criteria_scores=eval_result.get("criteria_scores"),
+        )
+        db.add(evaluation)
+        db.commit()
         return EvaluateResponse(
-            score=eval_result.get("score", 5),
+            score=score,
             explanation=eval_result.get("explanation", ""),
             agent_output=output,
             criteria_scores=eval_result.get("criteria_scores"),
@@ -231,6 +245,18 @@ async def batch_evaluate_agent(
                 "agent_output": output,
             })
             scores.append(score)
+            # Persist each evaluation
+            evaluation = AgentEvaluation(
+                agent_id=agent.id,
+                user_id=current_user.id,
+                input=user_input,
+                agent_output=output,
+                score=score,
+                explanation=eval_result.get("explanation", ""),
+                criteria=criteria,
+                criteria_scores=eval_result.get("criteria_scores"),
+            )
+            db.add(evaluation)
         except Exception as e:
             results.append({
                 "input": user_input,
@@ -240,6 +266,7 @@ async def batch_evaluate_agent(
             })
             scores.append(0.0)
 
+    db.commit()
     avg = sum(scores) / len(scores) if scores else 0.0
     return BatchEvaluateResponse(results=results, average_score=round(avg, 2), count=len(results))
 
@@ -265,3 +292,57 @@ async def list_agent_runs(
         .all()
     )
     return runs
+
+
+@router.get("/{agent_id}/evaluations", response_model=List[AgentEvaluationPublic])
+def list_evaluations(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    skip: int = 0,
+    limit: int = 50,
+):
+    """List persisted evaluation results for an agent."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent or (agent.owner_id != current_user.id and not agent.is_public):
+        raise HTTPException(status_code=404, detail="Agent not found or access denied")
+
+    evals = (
+        db.query(AgentEvaluation)
+        .filter(AgentEvaluation.agent_id == agent_id)
+        .order_by(AgentEvaluation.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return evals
+
+
+@router.get("/{agent_id}/evaluations/summary", response_model=EvaluationSummary)
+def evaluation_summary(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Summary statistics and recent evaluations for dashboard charts."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent or (agent.owner_id != current_user.id and not agent.is_public):
+        raise HTTPException(status_code=404, detail="Agent not found or access denied")
+
+    from sqlalchemy import func
+    stats = (
+        db.query(func.count(AgentEvaluation.id), func.avg(AgentEvaluation.score))
+        .filter(AgentEvaluation.agent_id == agent_id)
+        .first()
+    )
+    count = stats[0] or 0
+    avg = float(stats[1] or 0.0)
+
+    recent = (
+        db.query(AgentEvaluation)
+        .filter(AgentEvaluation.agent_id == agent_id)
+        .order_by(AgentEvaluation.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    return EvaluationSummary(count=count, average_score=round(avg, 2), recent=recent)

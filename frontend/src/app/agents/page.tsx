@@ -197,6 +197,9 @@ export default function AgentsPage() {
                 <Link href={`/agents/${agent.id}`} className={buttonVariants({ size: "sm", variant: "outline" })}>
                   View / Run
                 </Link>
+                <Link href={`/agents/${agent.id}/evaluations`} className={buttonVariants({ size: "sm", variant: "outline" })}>
+                  Evaluations
+                </Link>
                 <Button size="sm" variant="outline" onClick={() => setEditingAgent(agent)}>
                   Edit
                 </Button>
