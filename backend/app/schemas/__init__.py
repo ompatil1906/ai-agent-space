@@ -102,6 +102,7 @@ class AgentRunPublic(BaseModel):
     user_id: int
     input: str
     output: Optional[str] = None
+    messages: Optional[List[Dict[str, Any]]] = None  # serialized events / message history for visualization
     status: str
     error: Optional[str] = None
     created_at: datetime

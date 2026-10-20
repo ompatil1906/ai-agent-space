@@ -60,6 +60,7 @@ Open http://localhost:3000
 - Checkpointer: MemorySaver (dev) / PostgresSaver (prod)
 
 ## Recent Updates
+- Enhanced Agent Runner: persistent event stream (tool calls, agent steps) stored in AgentRun.messages; richer live visualization with color-coded tool cards and multi-agent badges; conversation history dialog with full event inspection and thread continue
 - Marketplace UI: ratings display (stars + avg + count), advanced filters (min rating, free/paid, sort by rating/price/name), and in-place rating modal
 - Added **parallel multi-agent** workflow (concurrent specialists + synthesizer)
 - Improved supervisor routing reliability with structured decision format
@@ -75,7 +76,7 @@ Open http://localhost:3000
 2. ~~Evaluation dashboard and batch evaluation harness~~ (Done: batch endpoint + basic)
 3. ~~Agent editing UI with version restore in builder~~ (Done: Edit button + Versions dialog with restore)
 4. Richer parallel patterns (map-reduce, debate) — Debate pattern added
-5. Conversation history UI improvements + deeper tool-call visualization
+5. ~~Conversation history UI improvements + deeper tool-call visualization~~ (Done: persisted event stream in runs + rich live + history dialog with tool activity)
 6. Evaluation results persistence + dashboard charts
 7. Structured outputs / function calling reliability improvements
 

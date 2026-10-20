@@ -100,9 +100,11 @@ async def stream_agent_endpoint(
 
     async def event_generator():
         full_output = ""
+        collected_events = []
         try:
             async for event in stream_agent(agent_config, request.input, thread_id=thread_id):
                 etype = event.get("type")
+                collected_events.append(event)
                 if etype == "token":
                     full_output += event["content"]
                     yield {"event": "token", "data": event["content"]}
@@ -118,19 +120,28 @@ async def stream_agent_endpoint(
                         "event": "tool_result",
                         "data": json.dumps({"name": event.get("name"), "content": event.get("content", "")}),
                     }
+                elif etype == "agent_step":
+                    import json
+                    yield {
+                        "event": "agent_step",
+                        "data": json.dumps({"agent": event.get("agent"), "content": event.get("content", "")}),
+                    }
                 elif etype == "done":
                     run.output = event["content"] or full_output
+                    run.messages = collected_events  # persist full event stream for history visualization
                     run.status = "completed"
                     db.commit()
                     yield {"event": "done", "data": run.output}
                 elif etype == "error":
                     run.status = "error"
                     run.error = event["content"]
+                    run.messages = collected_events
                     db.commit()
                     yield {"event": "error", "data": event["content"]}
         except Exception as e:
             run.status = "error"
             run.error = str(e)
+            run.messages = collected_events
             db.commit()
             yield {"event": "error", "data": str(e)}
 
