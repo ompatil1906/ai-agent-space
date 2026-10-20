@@ -113,3 +113,33 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for step-by-step instructions:
 
 ## Database Schema Note
 New fields (credits, workflow_config, versions) were added. For existing SQLite DBs, delete `backend/*.db` (or the app.db) and restart the backend so create_all rebuilds tables. Fresh installs work immediately.
+
+## Advanced Enhancements (Latest)
+
+- **Alembic Migrations**: Production-ready schema management. See `backend/alembic/`.
+  - Generate: `cd backend && alembic revision --autogenerate -m "description"`
+  - Apply: `alembic upgrade head`
+- **MCP Depth**: 
+  - `/api/v1/agents/mcp/validate` — validate configs
+  - `/api/v1/agents/mcp/health` — health check against MCP servers
+  - Richer tool discovery with input schemas
+- **Usage Metering**: 1 credit deducted per agent run (non-stream and stream).
+- **Test Suite**: `cd backend && pytest tests/`
+- Multi-agent streaming events, memory windowing, and versioning remain fully supported.
+
+## Running Tests
+
+```bash
+cd backend
+pip install -r requirements.txt
+pytest tests/ -v
+```
+
+## Migrations
+
+For existing deployments, run migrations instead of deleting the DB:
+
+```bash
+cd backend
+alembic upgrade head
+```

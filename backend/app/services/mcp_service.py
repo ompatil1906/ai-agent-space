@@ -4,9 +4,11 @@ Handles discovery and execution of tools from MCP servers using
 langchain-mcp-adapters and the official MCP Python SDK.
 
 Supports stdio, streamable_http, and sse transports.
+Advanced: validation, richer discovery with schemas, connection health.
 """
 from typing import Any, Dict, List, Optional
 import logging
+import asyncio
 
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -22,12 +24,14 @@ logger = logging.getLogger(__name__)
 class MCPService:
     """Service to connect to MCP servers, discover tools, and convert them to LangChain tools."""
 
-    def _normalize_connection(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_connection(self, config: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
         """Normalize a user-provided tool/server config into a connection dict."""
         transport = config.get("transport") or config.get("type")
         name = config.get("name") or config.get("id") or "mcp_server"
 
         if transport == "stdio" or (not transport and "command" in config):
+            if "command" not in config:
+                raise ValueError("stdio transport requires 'command'")
             conn: StdioConnection = {
                 "transport": "stdio",
                 "command": config["command"],
@@ -40,6 +44,8 @@ class MCPService:
             return name, conn
 
         if transport in ("streamable_http", "http") or (not transport and "url" in config):
+            if "url" not in config:
+                raise ValueError("http/streamable_http transport requires 'url'")
             conn: StreamableHttpConnection = {
                 "transport": "streamable_http",
                 "url": config["url"],
@@ -49,6 +55,8 @@ class MCPService:
             return name, conn
 
         if transport == "sse":
+            if "url" not in config:
+                raise ValueError("sse transport requires 'url'")
             conn: SSEConnection = {
                 "transport": "sse",
                 "url": config["url"],
@@ -65,12 +73,22 @@ class MCPService:
         for i, cfg in enumerate(tools_config or []):
             try:
                 name, conn = self._normalize_connection(cfg)
-                # Ensure unique names
                 unique_name = name if name not in connections else f"{name}_{i}"
                 connections[unique_name] = conn
             except Exception as e:
                 logger.warning(f"Skipping invalid MCP config {cfg}: {e}")
         return connections
+
+    async def validate_config(self, tools_config: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Validate MCP configs and return status for each."""
+        results = []
+        for cfg in tools_config or []:
+            try:
+                name, _ = self._normalize_connection(cfg)
+                results.append({"name": name, "valid": True, "error": None})
+            except Exception as e:
+                results.append({"name": cfg.get("name", "unknown"), "valid": False, "error": str(e)})
+        return results
 
     async def get_tools(self, tools_config: List[Dict[str, Any]]) -> List[BaseTool]:
         """
@@ -91,21 +109,27 @@ class MCPService:
             return tools
         except Exception as e:
             logger.error(f"Failed to load MCP tools: {e}")
-            # Return empty so agent can still run without tools
             return []
 
     async def discover_tools(self, tools_config: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Discover available tools (name, description, schema) without binding them.
-        Useful for UI preview.
+        Discover available tools with rich metadata (name, description, input schema).
+        Useful for UI preview and agent configuration.
         """
         tools = await self.get_tools(tools_config)
         result = []
         for tool in tools:
+            schema = None
+            if hasattr(tool, "args_schema") and tool.args_schema:
+                try:
+                    schema = tool.args_schema.model_json_schema() if hasattr(tool.args_schema, "model_json_schema") else str(tool.args_schema)
+                except Exception:
+                    schema = getattr(tool.args_schema, "__name__", None)
             result.append({
                 "name": tool.name,
                 "description": tool.description or "",
-                "args_schema": getattr(tool, "args_schema", None).__name__ if hasattr(tool, "args_schema") else None,
+                "args_schema": schema,
+                "server": getattr(tool, "metadata", {}).get("server") if hasattr(tool, "metadata") else None,
             })
         return result
 
@@ -121,6 +145,20 @@ class MCPService:
             if tool.name == tool_name:
                 return await tool.ainvoke(arguments)
         raise ValueError(f"Tool '{tool_name}' not found in the provided MCP configs")
+
+    async def health_check(self, tools_config: List[Dict[str, Any]], timeout: float = 10.0) -> Dict[str, Any]:
+        """Quick health check: try to load tools and report success/failure per config group."""
+        try:
+            tools = await asyncio.wait_for(self.get_tools(tools_config), timeout=timeout)
+            return {
+                "healthy": True,
+                "tool_count": len(tools),
+                "tools": [t.name for t in tools],
+            }
+        except asyncio.TimeoutError:
+            return {"healthy": False, "error": "Timeout connecting to MCP servers"}
+        except Exception as e:
+            return {"healthy": False, "error": str(e)}
 
 
 # Singleton

@@ -35,6 +35,10 @@ async def run_agent_endpoint(
         "workflow_config": agent.workflow_config or {},
     }
 
+    # Credit check (simple usage metering)
+    if current_user.credits < 1:
+        raise HTTPException(status_code=402, detail="Insufficient credits to run agent")
+
     # Create run record
     run = AgentRun(
         agent_id=agent_id,
@@ -43,6 +47,8 @@ async def run_agent_endpoint(
         status="running",
     )
     db.add(run)
+    # Deduct 1 credit for the run
+    current_user.credits -= 1
     db.commit()
     db.refresh(run)
 

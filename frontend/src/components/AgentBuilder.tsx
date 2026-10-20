@@ -48,6 +48,8 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [loading, setLoading] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [discoveredTools, setDiscoveredTools] = useState<any[]>([]);
+  const [validating, setValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState<any>(null);
 
   const addTool = () => {
     setTools([...tools, { name: `tool_${tools.length + 1}`, transport: "stdio", command: "python", args: [] }]);
@@ -117,6 +119,32 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       await onSubmit(payload);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const validateTools = async () => {
+    if (tools.length === 0) return;
+    setValidating(true);
+    setValidationResult(null);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/agents/mcp/validate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(tools),
+      });
+      if (res.ok) {
+        setValidationResult(await res.json());
+      } else {
+        setValidationResult({ error: await res.text() });
+      }
+    } catch (e: any) {
+      setValidationResult({ error: e.message });
+    } finally {
+      setValidating(false);
     }
   };
 
@@ -264,6 +292,9 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
             <div className="flex justify-between items-center">
               <h3 className="font-medium">MCP Tools</h3>
               <div className="flex gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={validateTools} disabled={validating || tools.length === 0}>
+                  {validating ? "Validating..." : "Validate Configs"}
+                </Button>
                 <Button type="button" size="sm" variant="outline" onClick={discoverTools} disabled={discovering || tools.length === 0}>
                   {discovering ? "Discovering..." : "Preview Tools"}
                 </Button>
@@ -272,6 +303,24 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 </Button>
               </div>
             </div>
+            {validationResult && (
+              <div className="mt-3 p-3 border rounded text-sm">
+                <strong>Validation:</strong>{" "}
+                {validationResult.error ? (
+                  <span className="text-red-500">{validationResult.error}</span>
+                ) : validationResult.all_valid ? (
+                  <span className="text-green-600">All configs valid</span>
+                ) : (
+                  <ul className="list-disc pl-5 mt-1">
+                    {validationResult.results?.map((r: any, i: number) => (
+                      <li key={i} className={r.valid ? "text-green-600" : "text-red-500"}>
+                        {r.name}: {r.valid ? "OK" : r.error}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             {discoveredTools.length > 0 && (
               <div className="mt-2 p-2 bg-muted rounded text-xs max-h-32 overflow-auto">
                 <strong>Discovered Tools:</strong>

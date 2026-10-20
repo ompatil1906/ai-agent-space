@@ -234,3 +234,23 @@ async def discover_mcp_tools(
         return {"tools": tools, "count": len(tools)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"MCP discovery failed: {str(e)}")
+
+
+@router.post("/mcp/validate")
+async def validate_mcp_configs(
+    tools_config: List[dict],
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Validate MCP server configurations before saving an agent."""
+    results = await mcp_service.validate_config(tools_config)
+    return {"results": results, "all_valid": all(r["valid"] for r in results)}
+
+
+@router.post("/mcp/health")
+async def mcp_health_check(
+    tools_config: List[dict],
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Perform a health check against the configured MCP servers."""
+    result = await mcp_service.health_check(tools_config)
+    return result
