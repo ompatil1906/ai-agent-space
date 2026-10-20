@@ -81,7 +81,7 @@ Open http://localhost:3000
 5. ~~Conversation history UI improvements + deeper tool-call visualization~~ (Done: persisted event stream in runs + rich live + history dialog with tool activity)
 6. ~~Evaluation results persistence + dashboard charts~~ (Done: AgentEvaluation model, summary endpoint, dashboard with trend bars)
 7. Structured outputs / function calling reliability improvements
-8. True parallel map-reduce with LangGraph Send API
+8. ~~True parallel map-reduce with LangGraph Send API~~ (Done: Send-based concurrent fan-out + reducer)
 9. Advanced memory (vector store / long-term)
 
 ## Architecture Notes

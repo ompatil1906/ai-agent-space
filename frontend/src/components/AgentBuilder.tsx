@@ -39,7 +39,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [tools, setTools] = useState<ToolConfig[]>(initial?.tools_config || []);
   const [memoryEnabled, setMemoryEnabled] = useState(initial?.memory_config?.enabled ?? true);
   const [maxMessages, setMaxMessages] = useState<number>(initial?.memory_config?.max_messages ?? 20);
-  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate">(
+  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce">(
     initial?.workflow_config?.type || "single"
   );
   const [subAgents, setSubAgents] = useState<SubAgent[]>(
@@ -247,6 +247,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 <SelectItem value="supervisor">Supervisor Multi-Agent</SelectItem>
                 <SelectItem value="parallel">Parallel Multi-Agent (Synthesizer)</SelectItem>
                 <SelectItem value="debate">Debate Multi-Agent (Pro/Con + Judge)</SelectItem>
+                <SelectItem value="map_reduce">Map-Reduce (Parallel Specialists + Synthesizer)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -254,7 +255,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
           {workflowType !== "single" && (
             <div className="space-y-4 border rounded-lg p-4">
               <div className="flex justify-between items-center">
-                <h3 className="font-medium">Sub-Agents / Workers</h3>
+                <h3 className="font-medium">{workflowType === "map_reduce" ? "Mapper Specialists" : "Sub-Agents / Workers"}</h3>
                 <Button type="button" size="sm" variant="outline" onClick={addSubAgent}>
                   Add Sub-Agent
                 </Button>

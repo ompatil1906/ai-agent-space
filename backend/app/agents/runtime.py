@@ -1,6 +1,6 @@
 """
 Advanced LangGraph-based agent runtime with streaming, memory, MCP tools,
-and multi-agent orchestration (single / sequential / supervisor).
+and multi-agent orchestration (single / sequential / supervisor / parallel / debate / map_reduce).
 
 Memory: Uses MemorySaver by default. Switches to PostgresSaver when
 DATABASE_URL is PostgreSQL and the package is installed (production-ready).
@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
+from langgraph.types import Send
 from langgraph.prebuilt import ToolNode
 
 from app.core.config import settings
@@ -443,23 +444,31 @@ def build_map_reduce_graph(agent_config: Dict[str, Any], tools: Optional[List[An
         response.additional_kwargs["agent"] = "reducer"
         return {"messages": [response]}
 
-    # Simple sequential map for reliability (can be parallelized later with Send)
-    prev = None
+    # True parallel map-reduce using LangGraph Send API for concurrent fan-out
+    mapper_names = []
     for i, m in enumerate(mappers):
         name = m.get("name", f"mapper_{i}")
         prompt = m.get("system_prompt", "You are a specialist mapper.")
         workflow.add_node(name, make_mapper(prompt, name))
-        if prev is None:
-            workflow.set_entry_point(name)
-        else:
-            workflow.add_edge(prev, name)
-        prev = name
+        mapper_names.append(name)
 
     workflow.add_node("reducer", reducer_node)
-    if prev:
-        workflow.add_edge(prev, "reducer")
-    else:
-        workflow.set_entry_point("reducer")
+
+    def fan_out(state: AgentState):
+        """Fan-out to all mappers in parallel via Send."""
+        return [Send(name, state) for name in mapper_names]
+
+    # Lightweight dispatcher node
+    def dispatcher(state: AgentState):
+        return {}
+
+    workflow.add_node("dispatcher", dispatcher)
+    workflow.set_entry_point("dispatcher")
+    workflow.add_conditional_edges("dispatcher", fan_out, mapper_names)
+
+    for name in mapper_names:
+        workflow.add_edge(name, "reducer")
+
     workflow.add_edge("reducer", END)
 
     return workflow.compile(checkpointer=checkpointer)
