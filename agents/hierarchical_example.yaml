@@ -1,0 +1,46 @@
+name: Hierarchical Research Team
+description: Manager coordinates research and writing teams; each team has specialists with full tool use.
+system_prompt: You are a senior manager. Delegate to the appropriate team and synthesize the final answer.
+model_name: gpt-4o-mini
+temperature: 0.4
+memory:
+  enabled: true
+  max_messages: 30
+  longterm:
+    enabled: true
+    k: 5
+workflow:
+  type: hierarchical
+  teams:
+    - name: research_team
+      description: Gathers facts, sources, and data
+      system_prompt: You lead the research team. Coordinate specialists to find accurate information.
+      workflow:
+        type: supervisor
+        sub_agents:
+          - name: web_researcher
+            description: Searches and summarizes sources
+            system_prompt: You research topics thoroughly using available tools.
+          - name: data_analyst
+            description: Analyzes numbers and structures findings
+            system_prompt: You analyze data and produce clear insights.
+    - name: writing_team
+      description: Produces polished output
+      system_prompt: You lead the writing team.
+      workflow:
+        type: sequential
+        sub_agents:
+          - name: drafter
+            description: Creates first draft
+            system_prompt: You write clear, engaging drafts.
+          - name: editor
+            description: Improves clarity and correctness
+            system_prompt: You edit for clarity, tone, and accuracy.
+execution:
+  max_steps: 40
+  autonomy_level: semi_autonomous
+  planning_enabled: true
+  reflection_enabled: true
+  max_reflections: 1
+  sandbox_enabled: false
+tools: []

@@ -181,3 +181,37 @@ def get_memory_service() -> LongTermMemoryService:
 
 
     
+
+    def summarize_and_store(
+        self,
+        agent_id: int,
+        user_id: int,
+        interaction_text: str,
+        llm: Any = None,
+    ) -> Optional[str]:
+        """Optionally summarize a long interaction before storing to keep memories dense."""
+        if not self._available or not interaction_text or len(interaction_text) < 400:
+            return self.add_memory(agent_id, user_id, interaction_text)
+
+        try:
+            from langchain_openai import ChatOpenAI
+            from app.core.config import settings
+            if llm is None:
+                llm = ChatOpenAI(
+                    model="gpt-4o-mini",
+                    temperature=0.0,
+                    api_key=settings.OPENAI_API_KEY or "sk-local",
+                    base_url=settings.OPENAI_BASE_URL or None,
+                )
+            summary_prompt = (
+                "Summarize the following agent interaction into 2-4 concise bullet points "
+                "capturing key facts, decisions, and outcomes. Be factual and dense.\n\n"
+                + interaction_text[:4000]
+            )
+            resp = llm.invoke(summary_prompt)
+            summary = getattr(resp, "content", str(resp)) or interaction_text[:500]
+            return self.add_memory(agent_id, user_id, summary, metadata={"type": "summary"})
+        except Exception as e:
+            logger.warning("Summarization failed, storing raw: %s", e)
+            return self.add_memory(agent_id, user_id, interaction_text[:1000])
+

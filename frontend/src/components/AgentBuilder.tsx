@@ -43,7 +43,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [maxMessages, setMaxMessages] = useState<number>(initial?.memory_config?.max_messages ?? 20);
   const [longtermEnabled, setLongtermEnabled] = useState(initial?.memory_config?.longterm_enabled ?? false);
   const [longtermK, setLongtermK] = useState<number>(initial?.memory_config?.longterm_k ?? 5);
-  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce">(
+  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "hierarchical">(
     initial?.workflow_config?.type || "single"
   );
   const [subAgents, setSubAgents] = useState<SubAgent[]>(
@@ -158,7 +158,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       setLongtermEnabled(mem.longterm?.enabled ?? false);
       setLongtermK(Number(mem.longterm?.k ?? 5));
       const wf = doc.workflow || {};
-      const type = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce"];
+      const type = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "hierarchical"];
       if (wf.type && type.includes(wf.type)) setWorkflowType(wf.type);
       const subs = wf.sub_agents || wf.workers || [];
       setSubAgents(
@@ -456,6 +456,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <SelectItem value="parallel">Parallel Multi-Agent (Synthesizer)</SelectItem>
                     <SelectItem value="debate">Debate Multi-Agent (Pro/Con + Judge)</SelectItem>
                     <SelectItem value="map_reduce">Map-Reduce (Parallel Specialists + Synthesizer)</SelectItem>
+                    <SelectItem value="hierarchical">Hierarchical (Manager → Teams)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

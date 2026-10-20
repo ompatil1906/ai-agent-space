@@ -189,13 +189,12 @@ def store_interaction_memory(
         return
     try:
         from app.services.memory_service import get_memory_service
-        text = f"User: {user_input[:500]}\nAssistant: {agent_output[:1000]}"
-        get_memory_service().add_memory(
-            int(agent_id),
-            int(user_id),
-            text,
-            metadata={"source": "interaction"},
-        )
+        text = f"User: {user_input[:800]}\nAssistant: {agent_output[:1500]}"
+        svc = get_memory_service()
+        if len(text) > 600 and hasattr(svc, "summarize_and_store"):
+            svc.summarize_and_store(int(agent_id), int(user_id), text)
+        else:
+            svc.add_memory(int(agent_id), int(user_id), text, metadata={"source": "interaction"})
     except Exception as e:
         logger.debug("Failed to store long-term memory: %s", e)
 
@@ -257,6 +256,61 @@ def build_single_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[
             workflow.add_edge("agent", END)
 
     return workflow.compile(checkpointer=checkpointer)
+
+
+def build_worker_subgraph(
+    agent_config: Dict[str, Any],
+    system_prompt: str,
+    tools: Optional[List[Any]] = None,
+    node_label: str = "worker",
+):
+    """
+    Build a full ReAct subgraph for a multi-agent worker/specialist.
+    Shares the parent AgentState so messages, memory, and tools compose cleanly.
+    Each worker gets its own system prompt, optional tool binding, ToolNode loop,
+    and the same reflection / planning enhancements as a single agent.
+    """
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    temperature = agent_config.get("temperature", 0.7)
+    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
+
+    llm = get_llm(model_name, temperature, base_url)
+    if tools:
+        llm = llm.bind_tools(tools)
+
+    # Temporarily override system prompt for this worker while reusing helpers
+    worker_config = {**agent_config, "system_prompt": system_prompt}
+
+    workflow = StateGraph(AgentState)
+    workflow.add_node("agent", _build_node_call_model(llm, worker_config, system_prompt, node_label))
+    workflow.set_entry_point("agent")
+
+    reflect_cfg = _reflection_config(worker_config)
+
+    if tools:
+        tool_node = ToolNode(tools)
+        workflow.add_node("tools", tool_node)
+        if reflect_cfg["enabled"] and reflect_cfg["max_rounds"] > 0:
+            workflow.add_conditional_edges(
+                "agent",
+                _should_continue,
+                {"tools": "tools", "agent_done": "reflect"},
+            )
+            workflow.add_node("reflect", _make_reflect_node(worker_config, reflect_cfg["max_rounds"]))
+            workflow.add_edge("reflect", "agent")
+        else:
+            workflow.add_conditional_edges("agent", _should_continue, {"tools": "tools", "agent_done": END})
+        workflow.add_edge("tools", "agent")
+    else:
+        if reflect_cfg["enabled"] and reflect_cfg["max_rounds"] > 0:
+            workflow.add_conditional_edges("agent", _should_continue, {"tools": "tools", "agent_done": "reflect"})
+            workflow.add_node("reflect", _make_reflect_node(worker_config, reflect_cfg["max_rounds"]))
+            workflow.add_edge("reflect", "agent")
+        else:
+            workflow.add_edge("agent", END)
+
+    return workflow.compile()
+
 
 
 def _make_reflect_node(agent_config: Dict[str, Any], max_rounds: int):
@@ -331,51 +385,30 @@ def _make_reflect_node(agent_config: Dict[str, Any], max_rounds: int):
 
 def build_sequential_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """
-    Sequential multi-agent: sub-agents run in order, each seeing previous output.
+    Sequential multi-agent: each specialist is a full ReAct subgraph (tools + optional reflection).
+    Output of one becomes context for the next.
     """
     wf = agent_config.get("workflow_config") or {}
     sub_agents = wf.get("sub_agents") or []
     if not sub_agents:
         return build_single_agent_graph(agent_config, tools)
 
-    model_name = agent_config.get("model_name", "gpt-4o-mini")
-    temperature = agent_config.get("temperature", 0.7)
-    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
-    llm = get_llm(model_name, temperature, base_url)
-    if tools:
-        llm = llm.bind_tools(tools)
-
     workflow = StateGraph(AgentState)
-
-    def make_agent_node(prompt: str, name: str):
-        def node(state: AgentState):
-            enhanced = get_enhanced_system_prompt(prompt, agent_config, state)
-            messages = [SystemMessage(content=enhanced)] + state["messages"]
-            response = llm.invoke(messages)
-            response.additional_kwargs = response.additional_kwargs or {}
-            response.additional_kwargs["agent"] = name
-            return {"messages": [response]}
-        return node
 
     prev = None
     for i, sa in enumerate(sub_agents):
         node_name = sa.get("name", f"agent_{i}")
         prompt = sa.get("system_prompt", "You are a helpful specialist.")
-        workflow.add_node(node_name, make_agent_node(prompt, node_name))
+        # Full tool-using subgraph per specialist
+        worker_graph = build_worker_subgraph(agent_config, prompt, tools, node_name)
+        workflow.add_node(node_name, worker_graph)
         if prev is None:
             workflow.set_entry_point(node_name)
         else:
             workflow.add_edge(prev, node_name)
         prev = node_name
 
-    if tools:
-        tool_node = ToolNode(tools)
-        workflow.add_node("tools", tool_node)
-        workflow.add_conditional_edges(prev, _should_continue, {"tools": "tools", "agent_done": END})
-        workflow.add_edge("tools", prev)
-    else:
-        workflow.add_edge(prev, END)
-
+    workflow.add_edge(prev, END)
     return workflow.compile(checkpointer=checkpointer)
 
 
@@ -425,26 +458,15 @@ def build_supervisor_graph(agent_config: Dict[str, Any], tools: Optional[List[An
         response.additional_kwargs["next"] = next_worker
         return {"messages": [response]}
 
-    def make_worker(prompt: str, name: str):
-        def node(state: AgentState):
-            llm = base_llm
-            if tools:
-                llm = llm.bind_tools(tools)
-            enhanced = get_enhanced_system_prompt(prompt, agent_config, state)
-            messages = [SystemMessage(content=enhanced)] + state["messages"]
-            response = llm.invoke(messages)
-            response.additional_kwargs = response.additional_kwargs or {}
-            response.additional_kwargs["agent"] = name
-            return {"messages": [response]}
-        return node
-
     workflow.add_node("supervisor", supervisor_node)
     workflow.set_entry_point("supervisor")
 
     for w in workers:
         name = w.get("name", "worker")
         prompt = w.get("system_prompt", "You are a specialist worker.")
-        workflow.add_node(name, make_worker(prompt, name))
+        # Full ReAct tool-using subgraph for each worker
+        worker_graph = build_worker_subgraph(agent_config, prompt, tools, name)
+        workflow.add_node(name, worker_graph)
         workflow.add_edge(name, "supervisor")
 
     def route_supervisor(state: AgentState) -> str:
@@ -664,7 +686,8 @@ def build_map_reduce_graph(agent_config: Dict[str, Any], tools: Optional[List[An
     for i, m in enumerate(mappers):
         name = m.get("name", f"mapper_{i}")
         prompt = m.get("system_prompt", "You are a specialist mapper.")
-        workflow.add_node(name, make_mapper(prompt, name))
+        worker_graph = build_worker_subgraph(agent_config, prompt, tools, name)
+        workflow.add_node(name, worker_graph)
         mapper_names.append(name)
 
     workflow.add_node("reducer", reducer_node)
@@ -689,6 +712,95 @@ def build_map_reduce_graph(agent_config: Dict[str, Any], tools: Optional[List[An
     return workflow.compile(checkpointer=checkpointer)
 
 
+def build_hierarchical_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
+    """
+    Hierarchical multi-agent: top-level manager delegates to teams.
+    Each team is itself a supervisor (or single) subgraph.
+    workflow_config example:
+    {
+      "type": "hierarchical",
+      "teams": [
+        {
+          "name": "research_team",
+          "description": "Handles research and fact-finding",
+          "workflow": {"type": "supervisor", "sub_agents": [...]},
+          "system_prompt": "You lead the research team."
+        },
+        ...
+      ]
+    }
+    Falls back to supervisor if no teams defined.
+    """
+    wf = agent_config.get("workflow_config") or {}
+    teams = wf.get("teams") or wf.get("sub_agents") or []
+    if not teams:
+        return build_supervisor_graph(agent_config, tools)
+
+    # Reuse supervisor routing logic but each "worker" is a team subgraph
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    temperature = agent_config.get("temperature", 0.7)
+    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
+    base_llm = get_llm(model_name, temperature, base_url)
+
+    team_names = [t.get("name", f"team_{i}") for i, t in enumerate(teams)]
+    team_desc = "\n".join(
+        f"- {t.get('name')}: {t.get('description', 'team')}" for t in teams
+    )
+    manager_prompt = (
+        agent_config.get("system_prompt", "You are a hierarchical manager coordinating teams.")
+        + f"\n\nAvailable teams:\n{team_desc}\n"
+        + "Decide the next step. You MUST reply with EXACTLY one of the following on its own line:\n"
+        + "\n".join(f"TEAM: {name}" for name in team_names)
+        + "\nFINISH\n"
+        + "Do not add any other text."
+    )
+
+    workflow = StateGraph(AgentState)
+
+    def manager_node(state: AgentState):
+        enhanced = get_enhanced_system_prompt(manager_prompt, agent_config, state)
+        messages = [SystemMessage(content=enhanced)] + state["messages"]
+        response = base_llm.invoke(messages)
+        content = (response.content or "").strip().upper()
+        next_team = None
+        for name in team_names:
+            if f"TEAM: {name.upper()}" in content or name.upper() in content:
+                next_team = name
+                break
+        if "FINISH" in content or next_team is None:
+            return {"messages": [response]}
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["next"] = next_team
+        return {"messages": [response]}
+
+    workflow.add_node("manager", manager_node)
+    workflow.set_entry_point("manager")
+
+    for t in teams:
+        name = t.get("name", "team")
+        # Build nested workflow config for the team
+        team_cfg = {**agent_config, "workflow_config": t.get("workflow") or {"type": "single"}, "system_prompt": t.get("system_prompt", agent_config.get("system_prompt"))}
+        team_graph = build_agent_graph(team_cfg, tools)
+        workflow.add_node(name, team_graph)
+        workflow.add_edge(name, "manager")
+
+    def route_manager(state: AgentState) -> str:
+        last = state["messages"][-1] if state["messages"] else None
+        if not last:
+            return END
+        nxt = getattr(last, "additional_kwargs", {}).get("next")
+        if nxt and nxt in team_names:
+            return nxt
+        return END
+
+    workflow.add_conditional_edges(
+        "manager", route_manager, {**{n: n for n in team_names}, END: END}
+    )
+
+    return workflow.compile(checkpointer=checkpointer)
+
+
+
 def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """Dispatch to the correct graph builder based on workflow_config.type."""
     wf_type = (agent_config.get("workflow_config") or {}).get("type", "single")
@@ -702,6 +814,8 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
         return build_debate_graph(agent_config, tools)
     if wf_type == "map_reduce":
         return build_map_reduce_graph(agent_config, tools)
+    if wf_type == "hierarchical":
+        return build_hierarchical_graph(agent_config, tools)
     return build_single_agent_graph(agent_config, tools)
 
 
