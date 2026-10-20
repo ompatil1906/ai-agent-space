@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -21,14 +22,15 @@ router = APIRouter()
 
 @router.post("/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
 def register(user_in: UserCreate, db: Session = Depends(get_db)) -> Any:
-    user = db.query(User).filter(User.email == user_in.email).first()
+    email = user_in.email.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == email).first()
     if user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The user with this email already exists in the system.",
         )
     user = User(
-        email=user_in.email,
+        email=email,
         hashed_password=get_password_hash(user_in.password),
         full_name=user_in.full_name,
     )
@@ -43,7 +45,8 @@ def login(
     db: Session = Depends(get_db),
     form_data: OAuth2PasswordRequestForm = Depends(),
 ) -> Any:
-    user = db.query(User).filter(User.email == form_data.username).first()
+    email = form_data.username.strip().lower()
+    user = db.query(User).filter(func.lower(User.email) == email).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

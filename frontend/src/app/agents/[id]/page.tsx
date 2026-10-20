@@ -445,6 +445,7 @@ function AgentRunContent() {
           </p>
           <p className="font-mono text-xs">
             <span className="text-muted-foreground">workflow:</span> {JSON.stringify(agent?.workflow_config || {})}
+          </p>
 
           <div className="mt-4">
             <div className="flex items-center justify-between">
@@ -466,8 +467,6 @@ function AgentRunContent() {
               </div>
             )}
           </div>
-
-          </p>
         </CardContent>
       </Card>
     </div>

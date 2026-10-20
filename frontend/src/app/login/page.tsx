@@ -15,7 +15,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData();
-    formData.append("username", email);
+    formData.append("username", email.trim());
     formData.append("password", password);
 
     try {
@@ -28,11 +28,13 @@ export default function LoginPage() {
         localStorage.setItem("token", data.access_token);
         setMessage("Logged in! Redirecting...");
         window.location.href = "/agents";
+      } else if (res.status === 401) {
+        setMessage(data.detail || "Incorrect email or password — need an account? Use Register below.");
       } else {
         setMessage(data.detail || "Login failed");
       }
     } catch (err) {
-      setMessage("Network error");
+      setMessage("Network error — is the backend running?");
     }
   };
 

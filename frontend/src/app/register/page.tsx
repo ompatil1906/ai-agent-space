@@ -19,17 +19,31 @@ export default function RegisterPage() {
       const res = await fetch(`${API_BASE}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, full_name: fullName }),
+        body: JSON.stringify({ email: email.trim(), password, full_name: fullName }),
       });
       const data = await res.json();
       if (res.ok) {
+        setMessage("Registered! Signing you in...");
+        // auto-login so the user lands in their workspace immediately
+        const loginForm = new FormData();
+        loginForm.append("username", email.trim());
+        loginForm.append("password", password);
+        const login = await fetch(`${API_BASE}/auth/login`, {
+          method: "POST",
+          body: loginForm,
+        });
+        if (login.ok) {
+          localStorage.setItem("token", (await login.json()).access_token);
+          window.location.href = "/agents";
+          return;
+        }
         setMessage("Registered successfully! Please login.");
         setTimeout(() => (window.location.href = "/login"), 1500);
       } else {
         setMessage(data.detail || "Registration failed");
       }
     } catch (err) {
-      setMessage("Network error");
+      setMessage("Network error — is the backend running?");
     }
   };
 
