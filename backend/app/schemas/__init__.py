@@ -135,6 +135,24 @@ class EvaluateResponse(BaseModel):
     criteria_scores: Optional[Dict[str, Any]] = None
 
 
+class BatchEvaluateRequest(BaseModel):
+    inputs: List[str]
+    criteria: Optional[str] = "helpfulness, accuracy, and clarity"
+
+
+class BatchEvaluateItem(BaseModel):
+    input: str
+    score: float
+    explanation: str
+    agent_output: str
+
+
+class BatchEvaluateResponse(BaseModel):
+    results: List[BatchEvaluateItem]
+    average_score: float
+    count: int
+
+
 # Versioning schemas
 class AgentVersionBase(BaseModel):
     version_number: int

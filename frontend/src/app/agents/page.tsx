@@ -5,8 +5,7 @@ import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { API_BASE } from "@/lib/api";
-import AgentBuilder from "@/components/AgentBuilder";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 interface Agent {
   id: number;
@@ -25,6 +24,10 @@ export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [token, setToken] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+  const [versions, setVersions] = useState<any[]>([]);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [discoverResult, setDiscoverResult] = useState<string>("");
 
   useEffect(() => {
@@ -93,6 +96,52 @@ export default function AgentsPage() {
     }
   };
 
+  const updateAgent = async (payload: any) => {
+    if (!token || !editingAgent) return;
+    const res = await fetch(`${API_BASE}/agents/${editingAgent.id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      setEditingAgent(null);
+      fetchAgents(token);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(err.detail || "Failed to update agent");
+    }
+  };
+
+  const loadVersions = async (agentId: number) => {
+    if (!token) return;
+    const res = await fetch(`${API_BASE}/agents/${agentId}/versions`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      setVersions(await res.json());
+      setSelectedAgentId(agentId);
+      setVersionsOpen(true);
+    }
+  };
+
+  const restoreVersion = async (agentId: number, versionId: number) => {
+    if (!token) return;
+    const res = await fetch(`${API_BASE}/agents/${agentId}/versions/${versionId}/restore`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      alert("Restored successfully");
+      setVersionsOpen(false);
+      fetchAgents(token);
+    } else {
+      alert("Restore failed");
+    }
+  };
+
   if (!token) return <div>Loading...</div>;
 
   return (
@@ -103,7 +152,7 @@ export default function AgentsPage() {
           <Button variant="outline" onClick={() => (window.location.href = "/marketplace")}>
             Marketplace
           </Button>
-          <Button onClick={() => setShowCreate(!showCreate)}>
+          <Button onClick={() => { setShowCreate(!showCreate); setEditingAgent(null); }}>
             {showCreate ? "Cancel" : "Create Agent"}
           </Button>
         </div>
@@ -115,6 +164,19 @@ export default function AgentsPage() {
           {discoverResult && (
             <pre className="mt-2 p-2 bg-muted text-xs overflow-auto max-h-40">{discoverResult}</pre>
           )}
+        </div>
+      )}
+
+      {editingAgent && (
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold mb-2">Editing: {editingAgent.name}</h2>
+          <AgentBuilder
+            onSubmit={updateAgent}
+            initial={editingAgent}
+          />
+          <Button variant="outline" className="mt-2" onClick={() => setEditingAgent(null)}>
+            Cancel Edit
+          </Button>
         </div>
       )}
 
@@ -135,6 +197,12 @@ export default function AgentsPage() {
                 <Link href={`/agents/${agent.id}`} className={buttonVariants({ size: "sm", variant: "outline" })}>
                   View / Run
                 </Link>
+                <Button size="sm" variant="outline" onClick={() => setEditingAgent(agent)}>
+                  Edit
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => loadVersions(agent.id)}>
+                  Versions
+                </Button>
                 <Button size="sm" variant="secondary" onClick={() => publishAgent(agent.id, !agent.is_published)}>
                   {agent.is_published ? "Unpublish" : "Publish"}
                 </Button>
@@ -146,9 +214,32 @@ export default function AgentsPage() {
           </Card>
         ))}
       </div>
-      {agents.length === 0 && !showCreate && (
+      {agents.length === 0 && !showCreate && !editingAgent && (
         <p className="text-center text-muted-foreground">No agents yet. Create one!</p>
       )}
+
+      <Dialog open={versionsOpen} onOpenChange={setVersionsOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Agent Versions</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {versions.map((v) => (
+              <div key={v.id} className="border rounded p-3 flex justify-between items-start">
+                <div>
+                  <p className="font-medium">v{v.version_number} — {v.name}</p>
+                  <p className="text-xs text-muted-foreground">{v.change_note} · {new Date(v.created_at).toLocaleString()}</p>
+                  <p className="text-xs mt-1 line-clamp-2">{v.system_prompt.slice(0, 120)}...</p>
+                </div>
+                <Button size="sm" onClick={() => selectedAgentId && restoreVersion(selectedAgentId, v.id)}>
+                  Restore
+                </Button>
+              </div>
+            ))}
+            {versions.length === 0 && <p>No versions yet.</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

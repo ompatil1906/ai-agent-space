@@ -31,7 +31,8 @@ Open http://localhost:3000
 - **MCP Integration**: discover and execute tools from real MCP servers (stdio / streamable_http / sse)
 - **Marketplace**: publish, browse, search, clone, credit-based purchase (auto-clone)
 - Multi-agent foundation (workflow_config: single / sequential / supervisor / **parallel**) with proper graph builders
-- **Parallel multi-agent**: Independent specialists run concurrently (fully async), then a synthesizer combines outputs. Streaming now emits `agent_step` events for multi-agent visibility.
+- **Debate multi-agent**: Pro/Con specialists + impartial Judge for balanced analysis
+- **Batch Evaluation**: `POST /api/v1/agents/{id}/evaluate/batch` with list of inputs
 - Improved supervisor routing with stricter decision format for reliability
 - **MCP Tool Preview**: Discover and preview available tools from MCP configs directly in the Agent Builder UI
 - **Marketplace Ratings**: Rate published agents (1-5 + review), list ratings, average score
@@ -60,11 +61,13 @@ Open http://localhost:3000
 - Enhanced Agent Runner UI: live token streaming, tool call / tool result visualization, optional thread_id for conversation memory, conversation history list with one-click thread resume
 
 ## Next Priorities
-1. ~~Ratings display in marketplace UI + advanced marketplace filters~~ (Done: stars, avg, count, min-rating / price / sort filters + rate modal)
-2. Evaluation dashboard and batch evaluation harness
-3. Agent editing UI with version restore in builder
-4. Richer parallel patterns (map-reduce, debate) and structured outputs for supervisor
+1. ~~Ratings display in marketplace UI + advanced marketplace filters~~ (Done)
+2. ~~Evaluation dashboard and batch evaluation harness~~ (Done: batch endpoint + basic)
+3. ~~Agent editing UI with version restore in builder~~ (Done: Edit button + Versions dialog with restore)
+4. Richer parallel patterns (map-reduce, debate) — Debate pattern added
 5. Conversation history UI improvements + deeper tool-call visualization
+6. Evaluation results persistence + dashboard charts
+7. Structured outputs / function calling reliability improvements
 
 ## Architecture Notes
 - Clean modular design: models / schemas / api / agents / services

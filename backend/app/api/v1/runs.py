@@ -8,7 +8,7 @@ from app.agents.runtime import run_agent, stream_agent, evaluate_output
 from app.core.database import get_db
 from app.core.security import get_current_active_user
 from app.models import Agent, AgentRun, User
-from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse
+from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse, BatchEvaluateRequest, BatchEvaluateResponse
 
 router = APIRouter()
 
@@ -173,6 +173,58 @@ async def evaluate_agent(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+
+
+@router.post("/{agent_id}/evaluate/batch", response_model=BatchEvaluateResponse)
+async def batch_evaluate_agent(
+    agent_id: int,
+    request: BatchEvaluateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Batch evaluation harness: run the agent on multiple inputs and score each with LLM-as-judge."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.owner_id != current_user.id and not agent.is_public:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    agent_config = {
+        "model_name": agent.model_name,
+        "temperature": agent.temperature,
+        "system_prompt": agent.system_prompt,
+        "tools_config": agent.tools_config or [],
+        "memory_config": agent.memory_config or {},
+        "workflow_config": agent.workflow_config or {},
+    }
+
+    results = []
+    scores = []
+    criteria = request.criteria or "helpfulness, accuracy, and clarity"
+
+    for user_input in request.inputs[:10]:  # safety cap
+        try:
+            output = await run_agent(agent_config, user_input)
+            eval_result = await evaluate_output(agent_config, user_input, output, criteria=criteria)
+            score = float(eval_result.get("score", 5))
+            results.append({
+                "input": user_input,
+                "score": score,
+                "explanation": eval_result.get("explanation", ""),
+                "agent_output": output,
+            })
+            scores.append(score)
+        except Exception as e:
+            results.append({
+                "input": user_input,
+                "score": 0.0,
+                "explanation": f"Error: {str(e)}",
+                "agent_output": "",
+            })
+            scores.append(0.0)
+
+    avg = sum(scores) / len(scores) if scores else 0.0
+    return BatchEvaluateResponse(results=results, average_score=round(avg, 2), count=len(results))
 
 
 @router.get("/{agent_id}/runs", response_model=List[AgentRunPublic])

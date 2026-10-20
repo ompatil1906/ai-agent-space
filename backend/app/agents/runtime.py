@@ -289,6 +289,69 @@ def build_parallel_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]
     return workflow.compile(checkpointer=checkpointer)
 
 
+def build_debate_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
+    """
+    Debate multi-agent: Pro and Con specialists argue, then a Judge synthesizes a balanced conclusion.
+    Classic advanced pattern for critical analysis.
+    """
+    wf = agent_config.get("workflow_config") or {}
+    # Expect at least pro/con; fall back to defaults if not provided
+    sub_agents = wf.get("sub_agents") or [
+        {"name": "pro", "system_prompt": "You are the PRO side. Argue strongly in favor of the user's position or topic. Use evidence and logic."},
+        {"name": "con", "system_prompt": "You are the CON side. Argue strongly against the user's position or topic. Challenge assumptions and point out risks."},
+    ]
+    if len(sub_agents) < 2:
+        sub_agents = sub_agents + [
+            {"name": "con", "system_prompt": "You are the CON side. Argue strongly against."}
+        ]
+
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    temperature = agent_config.get("temperature", 0.7)
+    llm = get_llm(model_name, temperature)
+
+    workflow = StateGraph(AgentState)
+
+    def make_debater(prompt: str, name: str):
+        def node(state: AgentState):
+            messages = [SystemMessage(content=prompt)] + state["messages"]
+            response = llm.invoke(messages)
+            response.additional_kwargs = response.additional_kwargs or {}
+            response.additional_kwargs["agent"] = name
+            return {"messages": [response]}
+        return node
+
+    # Add pro and con (first two)
+    pro = sub_agents[0]
+    con = sub_agents[1]
+    workflow.add_node("pro", make_debater(pro.get("system_prompt", ""), pro.get("name", "pro")))
+    workflow.add_node("con", make_debater(con.get("system_prompt", ""), con.get("name", "con")))
+
+    def judge_node(state: AgentState):
+        pro_out = next((m.content for m in state["messages"] if getattr(m, "additional_kwargs", {}).get("agent") == "pro"), "")
+        con_out = next((m.content for m in state["messages"] if getattr(m, "additional_kwargs", {}).get("agent") == "con"), "")
+        judge_prompt = (
+            "You are an impartial Judge. Review the PRO and CON arguments below. "
+            "Provide a balanced, nuanced conclusion that synthesizes both sides, notes strengths/weaknesses, "
+            "and gives a clear recommendation or final answer.\n\n"
+            f"PRO:\n{pro_out}\n\nCON:\n{con_out}"
+        )
+        messages = [SystemMessage(content=judge_prompt)] + [
+            m for m in state["messages"] if not getattr(m, "additional_kwargs", {}).get("agent")
+        ]
+        response = llm.invoke(messages)
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = "judge"
+        return {"messages": [response]}
+
+    workflow.add_node("judge", judge_node)
+    workflow.set_entry_point("pro")
+    workflow.add_edge("pro", "con")
+    workflow.add_edge("con", "judge")
+    workflow.add_edge("judge", END)
+
+    return workflow.compile(checkpointer=checkpointer)
+
+
 def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """Dispatch to the correct graph builder based on workflow_config.type."""
     wf_type = (agent_config.get("workflow_config") or {}).get("type", "single")
@@ -298,6 +361,8 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
         return build_supervisor_graph(agent_config, tools)
     if wf_type == "parallel":
         return build_parallel_graph(agent_config, tools)
+    if wf_type == "debate":
+        return build_debate_graph(agent_config, tools)
     return build_single_agent_graph(agent_config, tools)
 
 
