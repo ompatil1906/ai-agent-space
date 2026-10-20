@@ -34,43 +34,72 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <Card className="w-[400px]">
-        <CardHeader>
-          <CardTitle>Create Account</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleRegister} className="space-y-4">
-            <Input
-              placeholder="Full Name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-            />
-            <Input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-            <Input
-              type="password"
-              placeholder="Password (min 8 chars)"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-            />
-            <Button type="submit" className="w-full">
-              Register
-            </Button>
-          </form>
-          {message && <p className="mt-4 text-sm text-muted-foreground">{message}</p>}
-          <p className="mt-4 text-sm">
-            Already have an account? <a href="/login" className="underline">Login</a>
-          </p>
-        </CardContent>
-      </Card>
+    <div className="relative flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center px-6 py-16">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-[360px] bg-[radial-gradient(50%_100%_at_50%_0%,rgb(255_255_255/6%),transparent_70%)]"
+      />
+      <div className="relative w-full max-w-sm">
+        <div className="mb-6 flex flex-col items-center gap-3 text-center">
+          <span className="flex size-9 items-center justify-center rounded-lg border border-border bg-card text-base leading-none font-medium">
+            /
+          </span>
+          <div>
+            <h1 className="text-xl font-medium tracking-tight">
+              Create your workspace
+            </h1>
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
+              start building agents in minutes
+            </p>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-muted-foreground">
+              Create Account
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleRegister} className="space-y-4">
+              <Input
+                placeholder="Full Name"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
+              <Input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              <Input
+                type="password"
+                placeholder="Password (min 8 chars)"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={8}
+              />
+              <Button type="submit" className="w-full">
+                Register
+              </Button>
+            </form>
+            {message && (
+              <p className="mt-4 font-mono text-xs text-muted-foreground">
+                {message}
+              </p>
+            )}
+            <p className="mt-4 text-sm text-muted-foreground">
+              Already have an account?{" "}
+              <a href="/login" className="text-foreground underline underline-offset-4">
+                Login
+              </a>
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

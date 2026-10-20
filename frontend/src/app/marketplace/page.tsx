@@ -33,7 +33,7 @@ function StarRating({ rating, count }: { rating: number | null | undefined; coun
   const half = rating - full >= 0.5;
   return (
     <div className="flex items-center gap-1 text-sm">
-      <span className="text-yellow-500">
+      <span className="text-amber-400">
         {"★".repeat(full)}
         {half ? "☆" : ""}
         {"☆".repeat(5 - full - (half ? 1 : 0))}
@@ -169,11 +169,16 @@ export default function MarketplacePage() {
 
   return (
     <div className="container mx-auto p-6 max-w-6xl">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Agent Marketplace</h1>
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
+            discover · clone · sell
+          </p>
+          <h1 className="mt-1 text-3xl font-medium tracking-tight">Agent Marketplace</h1>
+        </div>
         {credits !== null && (
-          <Badge variant="secondary" className="text-lg px-3 py-1">
-            Credits: {credits}
+          <Badge variant="secondary" className="font-mono text-sm px-3 py-1">
+            credits: {credits}
           </Badge>
         )}
       </div>
@@ -241,17 +246,19 @@ export default function MarketplacePage() {
         {agents.map((agent) => (
           <Card key={agent.id} className="flex flex-col">
             <CardHeader>
-              <CardTitle className="flex justify-between items-start gap-2">
+              <CardTitle className="flex justify-between items-start gap-2 text-sm font-medium tracking-tight">
                 <span className="line-clamp-1">{agent.name}</span>
-                <Badge>{agent.price === 0 ? "Free" : `${agent.price} cr`}</Badge>
+                <Badge variant="secondary" className="font-mono">
+                  {agent.price === 0 ? "free" : `${agent.price} cr`}
+                </Badge>
               </CardTitle>
-              <p className="text-sm text-muted-foreground">{agent.owner_email}</p>
+              <p className="font-mono text-xs text-muted-foreground">{agent.owner_email}</p>
               <StarRating rating={agent.average_rating} count={agent.rating_count} />
             </CardHeader>
             <CardContent className="flex-1 flex flex-col">
-              <p className="text-sm mb-4 line-clamp-3">{agent.description || "No description"}</p>
-              <p className="text-xs text-muted-foreground mb-4">
-                Model: {agent.model_name} | Temp: {agent.temperature}
+              <p className="text-sm mb-4 line-clamp-3 text-muted-foreground">{agent.description || "No description"}</p>
+              <p className="mb-4 font-mono text-xs text-muted-foreground">
+                model: {agent.model_name} · temp: {agent.temperature}
               </p>
               <div className="mt-auto flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" onClick={() => cloneAgent(agent.id)}>

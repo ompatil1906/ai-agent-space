@@ -147,9 +147,14 @@ export default function AgentsPage() {
   if (!token) return <div>Loading...</div>;
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">My Agents</h1>
+    <div className="container mx-auto p-6 max-w-6xl">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
+            workspace
+          </p>
+          <h1 className="mt-1 text-3xl font-medium tracking-tight">My Agents</h1>
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => (window.location.href = "/marketplace")}>
             Marketplace
@@ -171,7 +176,10 @@ export default function AgentsPage() {
 
       {editingAgent && (
         <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-2">Editing: {editingAgent.name}</h2>
+          <h2 className="text-lg font-medium tracking-tight mb-2">
+            <span className="font-mono text-xs text-muted-foreground uppercase">editing · </span>
+            {editingAgent.name}
+          </h2>
           <AgentBuilder
             onSubmit={updateAgent}
             initial={editingAgent}
@@ -186,15 +194,17 @@ export default function AgentsPage() {
         {agents.map((agent) => (
           <Card key={agent.id}>
             <CardHeader>
-              <CardTitle>{agent.name}</CardTitle>
+              <CardTitle className="text-sm font-medium tracking-tight">{agent.name}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground mb-2">{agent.description || "No description"}</p>
-              <p className="text-xs">Model: {agent.model_name}</p>
-              <p className="text-xs">Temp: {agent.temperature}</p>
-              {agent.tools_config && agent.tools_config.length > 0 && (
-                <p className="text-xs text-green-600">MCP Tools: {agent.tools_config.length} server(s)</p>
-              )}
+              <p className="text-sm text-muted-foreground mb-3">{agent.description || "No description"}</p>
+              <div className="rounded-md border border-border bg-muted/40 p-2.5 font-mono text-xs text-muted-foreground space-y-0.5">
+                <p>model: {agent.model_name}</p>
+                <p>temp: {agent.temperature}</p>
+                {agent.tools_config && agent.tools_config.length > 0 && (
+                  <p className="text-emerald-300">mcp: {agent.tools_config.length} server(s)</p>
+                )}
+              </div>
               <div className="mt-4 flex gap-2 flex-wrap">
                 <Link href={`/agents/${agent.id}`} className={buttonVariants({ size: "sm", variant: "outline" })}>
                   View / Run
@@ -220,7 +230,11 @@ export default function AgentsPage() {
         ))}
       </div>
       {agents.length === 0 && !showCreate && !editingAgent && (
-        <p className="text-center text-muted-foreground">No agents yet. Create one!</p>
+        <div className="rounded-xl border border-dashed border-border p-12 text-center">
+          <p className="font-mono text-sm text-muted-foreground">
+            No agents yet — create one to get started.
+          </p>
+        </div>
       )}
 
       <Dialog open={versionsOpen} onOpenChange={setVersionsOpen}>

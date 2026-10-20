@@ -189,24 +189,26 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="text-sm font-medium">Name</label>
+              <label className="font-mono text-xs text-muted-foreground uppercase">Name</label>
               <Input value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
             <div>
-              <label className="text-sm font-medium">Model</label>
+              <label className="font-mono text-xs text-muted-foreground uppercase">Model</label>
               <Input value={modelName} onChange={(e) => setModelName(e.target.value)} />
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium">Description</label>
+            <label className="font-mono text-xs text-muted-foreground uppercase">Description</label>
             <Input value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div>
-            <label className="text-sm font-medium">System Prompt</label>
+            <label className="font-mono text-xs text-muted-foreground uppercase">System Prompt</label>
             <Textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={4} />
           </div>
           <div>
-            <label className="text-sm font-medium">Temperature: {temperature}</label>
+            <label className="font-mono text-xs text-muted-foreground uppercase">
+              Temperature: <span className="text-foreground">{temperature}</span>
+            </label>
             <input
               type="range"
               min="0"
@@ -226,7 +228,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 checked={memoryEnabled}
                 onChange={(e) => setMemoryEnabled(e.target.checked)}
               />
-              <label htmlFor="memory" className="text-sm font-medium">
+              <label htmlFor="memory" className="text-sm">
                 Enable conversation memory (thread-based windowing)
               </label>
               {memoryEnabled && (
@@ -250,7 +252,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 checked={longtermEnabled}
                 onChange={(e) => setLongtermEnabled(e.target.checked)}
               />
-              <label htmlFor="longterm" className="text-sm font-medium">
+              <label htmlFor="longterm" className="text-sm">
                 Enable long-term semantic memory (vector store)
               </label>
               {longtermEnabled && (
@@ -270,7 +272,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
           </div>
 
           <div>
-            <label className="text-sm font-medium">Workflow Type</label>
+            <label className="font-mono text-xs text-muted-foreground uppercase">Workflow Type</label>
             <Select value={workflowType} onValueChange={(v: any) => setWorkflowType(v)}>
               <SelectTrigger>
                 <SelectValue />
@@ -287,17 +289,19 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
           </div>
 
           {workflowType !== "single" && (
-            <div className="space-y-4 border rounded-lg p-4">
+            <div className="space-y-4 rounded-lg border border-border p-4">
               <div className="flex justify-between items-center">
-                <h3 className="font-medium">{workflowType === "map_reduce" ? "Mapper Specialists" : "Sub-Agents / Workers"}</h3>
+                <h3 className="font-mono text-sm text-muted-foreground uppercase">
+                  {workflowType === "map_reduce" ? "Mapper Specialists" : "Sub-Agents / Workers"}
+                </h3>
                 <Button type="button" size="sm" variant="outline" onClick={addSubAgent}>
                   Add Sub-Agent
                 </Button>
               </div>
               {subAgents.map((sa, i) => (
-                <div key={i} className="border rounded p-3 space-y-2">
+                <div key={i} className="space-y-2 rounded-lg border border-border p-3">
                   <div className="flex justify-between">
-                    <Badge>Sub-Agent {i + 1}</Badge>
+                    <Badge variant="secondary" className="font-mono">Sub-Agent {i + 1}</Badge>
                     <Button type="button" size="sm" variant="ghost" onClick={() => removeSubAgent(i)}>
                       Remove
                     </Button>
@@ -323,9 +327,9 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
             </div>
           )}
 
-          <div className="space-y-4 border rounded-lg p-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-medium">MCP Tools</h3>
+            <div className="space-y-2 rounded-lg border border-border p-4">
+              <div className="flex justify-between items-center">
+                <h3 className="font-mono text-sm text-muted-foreground">mcp tools</h3>
               <div className="flex gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={validateTools} disabled={validating || tools.length === 0}>
                   {validating ? "Validating..." : "Validate Configs"}
@@ -339,16 +343,16 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
               </div>
             </div>
             {validationResult && (
-              <div className="mt-3 p-3 border rounded text-sm">
-                <strong>Validation:</strong>{" "}
+              <div className="mt-3 rounded-lg border border-border p-3 text-sm">
+                <strong className="font-mono text-xs text-muted-foreground uppercase">Validation</strong>{" "}
                 {validationResult.error ? (
-                  <span className="text-red-500">{validationResult.error}</span>
+                  <span className="text-red-400">{validationResult.error}</span>
                 ) : validationResult.all_valid ? (
-                  <span className="text-green-600">All configs valid</span>
+                  <span className="text-emerald-400">All configs valid</span>
                 ) : (
                   <ul className="list-disc pl-5 mt-1">
                     {validationResult.results?.map((r: any, i: number) => (
-                      <li key={i} className={r.valid ? "text-green-600" : "text-red-500"}>
+                      <li key={i} className={r.valid ? "text-emerald-400" : "text-red-400"}>
                         {r.name}: {r.valid ? "OK" : r.error}
                       </li>
                     ))}
@@ -357,7 +361,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
               </div>
             )}
             {discoveredTools.length > 0 && (
-              <div className="mt-2 p-2 bg-muted rounded text-xs max-h-32 overflow-auto">
+              <div className="mt-2 max-h-32 overflow-auto rounded-md bg-muted p-2 font-mono text-xs">
                 <strong>Discovered Tools:</strong>
                 <ul className="list-disc pl-4">
                   {discoveredTools.map((t, idx) => (
@@ -367,9 +371,9 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
               </div>
             )}
             {tools.map((tool, i) => (
-              <div key={i} className="border rounded p-3 space-y-2">
+              <div key={i} className="space-y-2 rounded-lg border border-border p-3">
                 <div className="flex justify-between">
-                  <Badge variant="secondary">Tool {i + 1}</Badge>
+                  <Badge variant="secondary" className="font-mono">Tool {i + 1}</Badge>
                   <Button type="button" size="sm" variant="ghost" onClick={() => removeTool(i)}>
                     Remove
                   </Button>

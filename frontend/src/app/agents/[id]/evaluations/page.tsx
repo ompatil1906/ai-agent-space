@@ -94,8 +94,10 @@ function EvaluationsContent() {
     <div className="container mx-auto max-w-5xl p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Evaluation Dashboard</h1>
-          <p className="text-muted-foreground">Agent #{agentId} · LLM-as-judge results</p>
+          <p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
+            agent · {agentId} · llm-as-judge
+          </p>
+          <h1 className="mt-1 text-3xl font-medium tracking-tight">Evaluation Dashboard</h1>
         </div>
         <Link href={`/agents/${agentId}`}>
           <Button variant="outline">Back to Agent</Button>
@@ -112,7 +114,7 @@ function EvaluationsContent() {
                 <CardTitle className="text-sm">Total Evaluations</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">{summary?.count ?? 0}</p>
+                <p className="font-mono text-3xl font-medium">{summary?.count ?? 0}</p>
               </CardContent>
             </Card>
             <Card>
@@ -120,7 +122,7 @@ function EvaluationsContent() {
                 <CardTitle className="text-sm">Average Score</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">{summary?.average_score?.toFixed(1) ?? "—"}</p>
+                <p className="font-mono text-3xl font-medium">{summary?.average_score?.toFixed(1) ?? "—"}</p>
                 <p className="text-xs text-muted-foreground">/ 10</p>
               </CardContent>
             </Card>
@@ -150,7 +152,7 @@ function EvaluationsContent() {
             </CardHeader>
             <CardContent className="space-y-3">
               <textarea
-                className="w-full min-h-[80px] rounded-md border p-3 text-sm"
+                className="w-full min-h-[80px] rounded-lg border border-input bg-transparent p-3 font-mono text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 placeholder="Enter a test input to evaluate the agent..."
                 value={evalInput}
                 onChange={(e) => setEvalInput(e.target.value)}
@@ -166,25 +168,25 @@ function EvaluationsContent() {
               <CardTitle>Evaluation History</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {evals.length === 0 && <p className="text-muted-foreground">No evaluations yet.</p>}
+              {evals.length === 0 && <p className="font-mono text-sm text-muted-foreground">No evaluations yet.</p>}
               {evals.map((ev) => (
-                <div key={ev.id} className="border rounded-lg p-4 space-y-2">
+                <div key={ev.id} className="space-y-2 rounded-lg border border-border p-4">
                   <div className="flex items-center justify-between">
-                    <Badge variant={ev.score >= 7 ? "default" : ev.score >= 5 ? "secondary" : "destructive"}>
+                    <Badge variant={ev.score >= 7 ? "default" : ev.score >= 5 ? "secondary" : "destructive"} className="font-mono">
                       Score: {ev.score.toFixed(1)} / 10
                     </Badge>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="font-mono text-xs text-muted-foreground">
                       {new Date(ev.created_at).toLocaleString()}
                     </span>
                   </div>
-                  <p className="text-sm"><strong>Input:</strong> {ev.input}</p>
+                  <p className="text-sm"><span className="font-mono text-xs text-muted-foreground">input: </span>{ev.input}</p>
                   {ev.agent_output && (
                     <p className="text-sm text-muted-foreground line-clamp-3">
-                      <strong>Output:</strong> {ev.agent_output}
+                      <span className="font-mono text-xs">output: </span>{ev.agent_output}
                     </p>
                   )}
                   {ev.explanation && (
-                    <p className="text-sm italic">{ev.explanation}</p>
+                    <p className="text-sm text-muted-foreground italic">{ev.explanation}</p>
                   )}
                 </div>
               ))}

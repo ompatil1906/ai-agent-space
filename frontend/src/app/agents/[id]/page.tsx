@@ -171,24 +171,24 @@ function AgentRunContent() {
     }
     if (ev.type === "tool_call") {
       return (
-        <div key={idx} className="my-2 border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950 p-2 rounded text-sm">
-          <div className="font-semibold text-blue-700 dark:text-blue-300">🔧 Tool Call: {ev.name}</div>
-          <pre className="text-xs mt-1 overflow-auto max-h-32">{JSON.stringify(ev.args, null, 2)}</pre>
+        <div key={idx} className="my-2 rounded-md border-l-2 border-blue-400/70 bg-blue-500/10 p-2.5 text-sm">
+          <div className="font-mono text-xs font-medium text-blue-300">⚙ tool_call · {ev.name}</div>
+          <pre className="text-xs mt-1.5 overflow-auto max-h-32 text-muted-foreground">{JSON.stringify(ev.args, null, 2)}</pre>
         </div>
       );
     }
     if (ev.type === "tool_result") {
       return (
-        <div key={idx} className="my-2 border-l-4 border-green-500 bg-green-50 dark:bg-green-950 p-2 rounded text-sm">
-          <div className="font-semibold text-green-700 dark:text-green-300">✅ Tool Result: {ev.name}</div>
-          <pre className="text-xs mt-1 overflow-auto max-h-40 whitespace-pre-wrap">{ev.content}</pre>
+        <div key={idx} className="my-2 rounded-md border-l-2 border-emerald-400/70 bg-emerald-500/10 p-2.5 text-sm">
+          <div className="font-mono text-xs font-medium text-emerald-300">✓ tool_result · {ev.name}</div>
+          <pre className="text-xs mt-1.5 overflow-auto max-h-40 whitespace-pre-wrap text-muted-foreground">{ev.content}</pre>
         </div>
       );
     }
     if (ev.type === "agent_step") {
       return (
         <div key={idx} className="my-1">
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="font-mono text-xs">
             {ev.agent || "agent"}: {ev.content?.slice(0, 80)}...
           </Badge>
         </div>
@@ -196,8 +196,9 @@ function AgentRunContent() {
     }
     if (ev.type === "error") {
       return (
-        <div key={idx} className="my-2 border-l-4 border-red-500 bg-red-50 dark:bg-red-950 p-2 rounded text-sm text-red-700">
-          Error: {ev.content}
+        <div key={idx} className="my-2 rounded-md border-l-2 border-red-500/70 bg-red-500/10 p-2.5 text-sm text-red-300">
+          <span className="font-mono text-xs">error · </span>
+          {ev.content}
         </div>
       );
     }
@@ -209,13 +210,16 @@ function AgentRunContent() {
 
   return (
     <div className="container mx-auto p-6 max-w-5xl">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">{agent?.name || "Agent"}</h1>
-        <p className="text-muted-foreground">{agent?.description}</p>
-        <div className="flex gap-2 mt-2">
-          <Badge>{agent?.model_name}</Badge>
+      <div className="mb-8">
+        <p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
+          agent · {agentId}
+        </p>
+        <h1 className="mt-1 text-3xl font-medium tracking-tight">{agent?.name || "Agent"}</h1>
+        <p className="mt-1 text-muted-foreground">{agent?.description}</p>
+        <div className="flex gap-2 mt-3">
+          <Badge variant="secondary" className="font-mono">{agent?.model_name}</Badge>
           {agent?.workflow_config?.type && agent.workflow_config.type !== "single" && (
-            <Badge variant="secondary">{agent.workflow_config.type} multi-agent</Badge>
+            <Badge variant="outline" className="font-mono">{agent.workflow_config.type} multi-agent</Badge>
           )}
         </div>
       </div>
@@ -234,14 +238,14 @@ function AgentRunContent() {
           <div className="flex gap-2 items-center">
             <input
               type="text"
-              placeholder="Thread ID (optional, for memory)"
+              placeholder="thread id (optional, for memory)"
               value={threadId}
               onChange={(e) => setThreadId(e.target.value)}
-              className="flex-1 border rounded px-3 py-2 text-sm"
+              className="flex-1 rounded-lg border border-input bg-transparent px-3 py-1.5 font-mono text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             />
-            <label className="flex items-center gap-1 text-sm">
+            <label className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
               <input type="checkbox" checked={streaming} onChange={(e) => setStreaming(e.target.checked)} />
-              Stream
+              stream
             </label>
             {loading ? (
               <Button variant="destructive" onClick={stopRun}>Stop</Button>
@@ -254,20 +258,20 @@ function AgentRunContent() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Live Output & Tool Calls</CardTitle>
+          <CardTitle className="font-mono text-sm text-muted-foreground">live output &amp; tool calls</CardTitle>
         </CardHeader>
         <CardContent>
           <div
             ref={outputRef}
-            className="min-h-[200px] max-h-[500px] overflow-auto border rounded p-4 bg-muted/30 font-mono text-sm whitespace-pre-wrap"
+            className="min-h-[200px] max-h-[500px] overflow-auto rounded-lg border border-border bg-black/40 p-4 font-mono text-sm whitespace-pre-wrap"
           >
             {events.length === 0 && !finalOutput && (
-              <p className="text-muted-foreground">Output and tool activity will appear here...</p>
+              <p className="text-muted-foreground">$ waiting for input…</p>
             )}
             {events.map(renderEvent)}
             {finalOutput && (
-              <div className="mt-4 pt-4 border-t">
-                <div className="text-xs text-muted-foreground mb-1">Final response:</div>
+              <div className="mt-4 pt-4 border-t border-border">
+                <div className="mb-1 font-mono text-xs text-muted-foreground">final response:</div>
                 <div className="whitespace-pre-wrap">{finalOutput}</div>
               </div>
             )}
@@ -277,36 +281,36 @@ function AgentRunContent() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Conversation History</CardTitle>
+          <CardTitle className="font-mono text-sm text-muted-foreground">conversation history</CardTitle>
         </CardHeader>
         <CardContent>
           {runs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No previous runs yet.</p>
+            <p className="font-mono text-sm text-muted-foreground">No previous runs yet.</p>
           ) : (
             <div className="space-y-2 max-h-80 overflow-auto">
               {runs.map((run) => (
                 <div
                   key={run.id}
-                  className="border rounded p-3 text-sm hover:bg-muted cursor-pointer"
+                  className="rounded-lg border border-border p-3 text-sm transition-colors hover:border-foreground/20 hover:bg-muted/50 cursor-pointer"
                   onClick={() => setSelectedRun(run)}
                 >
                   <div className="flex justify-between items-start">
                     <div>
-                      <span className="font-medium">Run #{run.id}</span>
-                      <Badge variant={run.status === "completed" ? "default" : "secondary"} className="ml-2">
+                      <span className="font-mono font-medium">#{run.id}</span>
+                      <Badge variant={run.status === "completed" ? "default" : "secondary"} className="ml-2 font-mono">
                         {run.status}
                       </Badge>
                     </div>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="font-mono text-xs text-muted-foreground">
                       {new Date(run.created_at).toLocaleString()}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1 truncate">Input: {run.input}</p>
+                  <p className="mt-1 font-mono text-xs text-muted-foreground truncate">in: {run.input}</p>
                   {run.output && (
-                    <p className="text-xs mt-1 line-clamp-2">Output: {run.output.slice(0, 150)}...</p>
+                    <p className="mt-1 text-xs line-clamp-2 text-muted-foreground">{run.output.slice(0, 150)}...</p>
                   )}
                   {run.messages && run.messages.length > 0 && (
-                    <p className="text-xs text-blue-600 mt-1">
+                    <p className="mt-1 font-mono text-xs text-blue-300">
                       {run.messages.filter((m: any) => m.type === "tool_call").length} tool calls recorded
                     </p>
                   )}
@@ -314,8 +318,8 @@ function AgentRunContent() {
               ))}
             </div>
           )}
-          <p className="text-xs text-muted-foreground mt-2">
-            Click a run to view full details and tool activity. Use Thread ID to continue the conversation with memory.
+          <p className="mt-3 font-mono text-xs text-muted-foreground">
+            click a run to inspect details · use thread id to continue with memory
           </p>
         </CardContent>
       </Card>
@@ -328,20 +332,20 @@ function AgentRunContent() {
             </DialogHeader>
             <div className="space-y-4 text-sm">
               <div>
-                <strong>Input:</strong>
-                <pre className="bg-muted p-2 rounded mt-1 whitespace-pre-wrap">{selectedRun.input}</pre>
+                <strong className="font-mono text-xs text-muted-foreground uppercase">Input</strong>
+                <pre className="mt-1 rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap">{selectedRun.input}</pre>
               </div>
               <div>
-                <strong>Output:</strong>
-                <pre className="bg-muted p-2 rounded mt-1 whitespace-pre-wrap">{selectedRun.output || "(none)"}</pre>
+                <strong className="font-mono text-xs text-muted-foreground uppercase">Output</strong>
+                <pre className="mt-1 rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap">{selectedRun.output || "(none)"}</pre>
               </div>
               {selectedRun.messages && selectedRun.messages.length > 0 && (
                 <div>
-                  <strong>Event Stream / Tool Activity:</strong>
-                  <div className="mt-2 space-y-1 max-h-60 overflow-auto border rounded p-2">
+                  <strong className="font-mono text-xs text-muted-foreground uppercase">Event Stream / Tool Activity</strong>
+                  <div className="mt-2 space-y-1 max-h-60 overflow-auto rounded-md border border-border p-2">
                     {selectedRun.messages.map((ev: any, i: number) => (
-                      <div key={i} className="text-xs border-b pb-1">
-                        <Badge variant="outline" className="mr-1">{ev.type}</Badge>
+                      <div key={i} className="border-b border-border pb-1 text-xs font-mono">
+                        <Badge variant="outline" className="mr-1 font-mono">{ev.type}</Badge>
                         {ev.name && <span className="font-medium">{ev.name}</span>}
                         {ev.agent && <span> ({ev.agent})</span>}
                         {ev.content && <span className="ml-1 text-muted-foreground">{String(ev.content).slice(0, 120)}</span>}
@@ -367,13 +371,21 @@ function AgentRunContent() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Agent Configuration</CardTitle>
+          <CardTitle className="font-mono text-sm text-muted-foreground">configuration</CardTitle>
         </CardHeader>
         <CardContent className="text-sm space-y-2">
-          <p><strong>System Prompt:</strong> {agent?.system_prompt?.slice(0, 300)}...</p>
-          <p><strong>Tools:</strong> {(agent?.tools_config || []).length} configured</p>
-          <p><strong>Memory:</strong> {JSON.stringify(agent?.memory_config || {})}</p>
-          <p><strong>Workflow:</strong> {JSON.stringify(agent?.workflow_config || {})}</p>
+          <p className="font-mono text-xs">
+            <span className="text-muted-foreground">system_prompt:</span> {agent?.system_prompt?.slice(0, 300)}...
+          </p>
+          <p className="font-mono text-xs">
+            <span className="text-muted-foreground">tools:</span> {(agent?.tools_config || []).length} configured
+          </p>
+          <p className="font-mono text-xs">
+            <span className="text-muted-foreground">memory:</span> {JSON.stringify(agent?.memory_config || {})}
+          </p>
+          <p className="font-mono text-xs">
+            <span className="text-muted-foreground">workflow:</span> {JSON.stringify(agent?.workflow_config || {})}
+          </p>
         </CardContent>
       </Card>
     </div>
