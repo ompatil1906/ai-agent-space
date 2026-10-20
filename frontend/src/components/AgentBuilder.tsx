@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { dump as yamlDump, load as yamlLoad } from "js-yaml";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { API_BASE } from "@/lib/api";
 
 interface ToolConfig {
@@ -28,12 +30,12 @@ interface AgentBuilderProps {
   initial?: Partial<any>;
 }
 
+const DEFAULT_PROMPT = "You are a helpful AI assistant. You have access to tools when configured.";
+
 export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [name, setName] = useState(initial?.name || "");
   const [description, setDescription] = useState(initial?.description || "");
-  const [systemPrompt, setSystemPrompt] = useState(
-    initial?.system_prompt || "You are a helpful AI assistant. You have access to tools when configured."
-  );
+  const [systemPrompt, setSystemPrompt] = useState(initial?.system_prompt || DEFAULT_PROMPT);
   const [modelName, setModelName] = useState(initial?.model_name || "gpt-4o-mini");
   const [temperature, setTemperature] = useState(initial?.temperature || 0.7);
   const [tools, setTools] = useState<ToolConfig[]>(initial?.tools_config || []);
@@ -47,11 +49,149 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [subAgents, setSubAgents] = useState<SubAgent[]>(
     initial?.workflow_config?.sub_agents || initial?.workflow_config?.workers || []
   );
+  // Execution / autonomy controls
+  const [maxSteps, setMaxSteps] = useState<number>(initial?.max_steps ?? 25);
+  const [autonomyLevel, setAutonomyLevel] = useState<string>(initial?.autonomy_level || "supervised");
+  const [sandboxEnabled, setSandboxEnabled] = useState<boolean>(initial?.sandbox_enabled ?? false);
+  const [planningEnabled, setPlanningEnabled] = useState<boolean>(initial?.advanced_config?.planning_enabled ?? false);
+  const [reflectEnabled, setReflectEnabled] = useState<boolean>(initial?.advanced_config?.reflection_enabled ?? false);
+  const [maxReflections, setMaxReflections] = useState<number>(initial?.advanced_config?.max_reflections ?? 2);
+  // YAML editor
+  const [editorMode, setEditorMode] = useState<"visual" | "yaml">("visual");
+  const [yamlText, setYamlText] = useState<string>("");
+  const [yamlError, setYamlError] = useState<string>("");
+
   const [loading, setLoading] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [discoveredTools, setDiscoveredTools] = useState<any[]>([]);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<any>(null);
+
+  const buildWorkflowConfig = (): any => {
+    const workflow_config: any = { type: workflowType };
+    if (workflowType !== "single") {
+      workflow_config.sub_agents = subAgents;
+      if (workflowType === "supervisor") {
+        workflow_config.workers = subAgents;
+      }
+    }
+    return workflow_config;
+  };
+
+  const buildPayload = () => ({
+    name,
+    description,
+    system_prompt: systemPrompt,
+    model_name: modelName,
+    temperature,
+    tools_config: serializeTools(),
+    memory_config: {
+      enabled: memoryEnabled,
+      max_messages: maxMessages,
+      type: longtermEnabled ? "hybrid" : "window",
+      longterm_enabled: longtermEnabled,
+      longterm_k: longtermK,
+    },
+    workflow_config: buildWorkflowConfig(),
+    max_steps: maxSteps,
+    autonomy_level: autonomyLevel,
+    sandbox_enabled: sandboxEnabled,
+    advanced_config: {
+      planning_enabled: planningEnabled,
+      reflection_enabled: reflectEnabled,
+      max_reflections: maxReflections,
+    },
+  });
+
+  const serializeTools = (): any[] =>
+    tools.map((t) => {
+      const cfg: any = { name: t.name, transport: t.transport };
+      if (t.transport === "stdio") {
+        cfg.command = t.command || "python";
+        cfg.args = t.args || [];
+      } else {
+        cfg.url = t.url || "";
+      }
+      return cfg;
+    });
+
+  const agentToYaml = (): string =>
+    yamlDump(
+      {
+        name,
+        description,
+        system_prompt: systemPrompt,
+        model_name: modelName,
+        temperature,
+        memory: {
+          enabled: memoryEnabled,
+          max_messages: maxMessages,
+          longterm: { enabled: longtermEnabled, k: longtermK },
+        },
+        workflow: buildWorkflowConfig(),
+        execution: {
+          max_steps: maxSteps,
+          autonomy_level: autonomyLevel,
+          sandbox_enabled: sandboxEnabled,
+          planning_enabled: planningEnabled,
+          reflection_enabled: reflectEnabled,
+          max_reflections: maxReflections,
+        },
+        tools: serializeTools(),
+      },
+      { lineWidth: 120 }
+    );
+
+  const applyYaml = (text: string): boolean => {
+    try {
+      const doc = yamlLoad(text) as any;
+      if (!doc || typeof doc !== "object") throw new Error("Document must be a mapping");
+      if (typeof doc.name !== "string" || !doc.name) throw new Error("'name' is required");
+      setName(doc.name);
+      setDescription(doc.description ?? description);
+      setSystemPrompt(doc.system_prompt ?? systemPrompt);
+      setModelName(doc.model_name ?? modelName);
+      if (typeof doc.temperature === "number") setTemperature(doc.temperature);
+      const mem = doc.memory || {};
+      setMemoryEnabled(mem.enabled ?? true);
+      setMaxMessages(Number(mem.max_messages ?? 20));
+      setLongtermEnabled(mem.longterm?.enabled ?? false);
+      setLongtermK(Number(mem.longterm?.k ?? 5));
+      const wf = doc.workflow || {};
+      const type = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce"];
+      if (wf.type && type.includes(wf.type)) setWorkflowType(wf.type);
+      const subs = wf.sub_agents || wf.workers || [];
+      setSubAgents(
+        subs.map((sa: any) => ({
+          name: String(sa.name ?? "agent"),
+          description: String(sa.description ?? ""),
+          system_prompt: String(sa.system_prompt ?? "You are a specialist."),
+        }))
+      );
+      const ex = doc.execution || {};
+      setMaxSteps(Number(ex.max_steps ?? 25));
+      setAutonomyLevel(ex.autonomy_level ?? "supervised");
+      setSandboxEnabled(Boolean(ex.sandbox_enabled));
+      setPlanningEnabled(Boolean(ex.planning_enabled ?? (ex.autonomy_level && ex.autonomy_level !== "supervised")));
+      setReflectEnabled(Boolean(ex.reflection_enabled));
+      setMaxReflections(Number(ex.max_reflections ?? 2));
+      const t = Array.isArray(doc.tools) ? doc.tools : [];
+      setTools(
+        t.map((tool: any) => ({
+          name: String(tool.name ?? "tool"),
+          transport: tool.transport ?? tool.type ?? "stdio",
+          command: tool.command,
+          args: Array.isArray(tool.args) ? tool.args : undefined,
+          url: tool.url,
+        }))
+      );
+      setYamlError("");
+      return true;
+    } catch (e: any) {
+      setYamlError(`YAML error: ${e?.message || e}`);
+      return false;
+    }
+  };
 
   const addTool = () => {
     setTools([...tools, { name: `tool_${tools.length + 1}`, transport: "stdio", command: "python", args: [] }]);
@@ -88,43 +228,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
     e.preventDefault();
     setLoading(true);
     try {
-      const tools_config = tools.map((t) => {
-        const cfg: any = { name: t.name, transport: t.transport };
-        if (t.transport === "stdio") {
-          cfg.command = t.command || "python";
-          cfg.args = t.args || [];
-        } else {
-          cfg.url = t.url || "";
-        }
-        return cfg;
-      });
-
-      const workflow_config: any = { type: workflowType };
-      if (workflowType !== "single") {
-        workflow_config.sub_agents = subAgents;
-        if (workflowType === "supervisor") {
-          workflow_config.workers = subAgents;
-        }
-      }
-
-      const payload = {
-        name,
-        description,
-        system_prompt: systemPrompt,
-        model_name: modelName,
-        temperature,
-        tools_config,
-        memory_config: { 
-          enabled: memoryEnabled, 
-          max_messages: maxMessages, 
-          type: longtermEnabled ? "hybrid" : "window",
-          longterm_enabled: longtermEnabled,
-          longterm_k: longtermK,
-        },
-        workflow_config,
-      };
-
-      await onSubmit(payload);
+      await onSubmit(buildPayload());
     } finally {
       setLoading(false);
     }
@@ -186,244 +290,344 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
         <CardTitle>Agent Builder</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="font-mono text-xs text-muted-foreground uppercase">Name</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} required />
-            </div>
-            <div>
-              <label className="font-mono text-xs text-muted-foreground uppercase">Model</label>
-              <Input value={modelName} onChange={(e) => setModelName(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <label className="font-mono text-xs text-muted-foreground uppercase">Description</label>
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
-          <div>
-            <label className="font-mono text-xs text-muted-foreground uppercase">System Prompt</label>
-            <Textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={4} />
-          </div>
-          <div>
-            <label className="font-mono text-xs text-muted-foreground uppercase">
-              Temperature: <span className="text-foreground">{temperature}</span>
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={temperature}
-              onChange={(e) => setTemperature(parseFloat(e.target.value))}
-              className="w-full"
-            />
-          </div>
+        <Tabs
+          value={editorMode}
+          onValueChange={(value: any) => {
+            const next = value === "yaml" ? "yaml" : "visual";
+            if (next === "yaml") setYamlText(agentToYaml());
+            setEditorMode(next);
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="visual">Visual</TabsTrigger>
+            <TabsTrigger value="yaml">YAML</TabsTrigger>
+          </TabsList>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="memory"
-                checked={memoryEnabled}
-                onChange={(e) => setMemoryEnabled(e.target.checked)}
-              />
-              <label htmlFor="memory" className="text-sm">
-                Enable conversation memory (thread-based windowing)
-              </label>
-              {memoryEnabled && (
-                <div className="flex items-center gap-2 ml-6 text-sm">
-                  <span>Max messages:</span>
-                  <Input
-                    type="number"
-                    min={2}
-                    max={100}
-                    className="w-20 h-8"
-                    value={maxMessages}
-                    onChange={(e) => setMaxMessages(parseInt(e.target.value) || 20)}
-                  />
+          <TabsContent value="visual">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="font-mono text-xs text-muted-foreground uppercase">Name</label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} required />
                 </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="longterm"
-                checked={longtermEnabled}
-                onChange={(e) => setLongtermEnabled(e.target.checked)}
-              />
-              <label htmlFor="longterm" className="text-sm">
-                Enable long-term semantic memory (vector store)
-              </label>
-              {longtermEnabled && (
-                <div className="flex items-center gap-2 ml-6 text-sm">
-                  <span>Retrieve k:</span>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={20}
-                    className="w-20 h-8"
-                    value={longtermK}
-                    onChange={(e) => setLongtermK(parseInt(e.target.value) || 5)}
-                  />
+                <div>
+                  <label className="font-mono text-xs text-muted-foreground uppercase">Model</label>
+                  <Input value={modelName} onChange={(e) => setModelName(e.target.value)} />
                 </div>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <label className="font-mono text-xs text-muted-foreground uppercase">Workflow Type</label>
-            <Select value={workflowType} onValueChange={(v: any) => setWorkflowType(v)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="single">Single Agent</SelectItem>
-                <SelectItem value="sequential">Sequential Multi-Agent</SelectItem>
-                <SelectItem value="supervisor">Supervisor Multi-Agent</SelectItem>
-                <SelectItem value="parallel">Parallel Multi-Agent (Synthesizer)</SelectItem>
-                <SelectItem value="debate">Debate Multi-Agent (Pro/Con + Judge)</SelectItem>
-                <SelectItem value="map_reduce">Map-Reduce (Parallel Specialists + Synthesizer)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {workflowType !== "single" && (
-            <div className="space-y-4 rounded-lg border border-border p-4">
-              <div className="flex justify-between items-center">
-                <h3 className="font-mono text-sm text-muted-foreground uppercase">
-                  {workflowType === "map_reduce" ? "Mapper Specialists" : "Sub-Agents / Workers"}
-                </h3>
-                <Button type="button" size="sm" variant="outline" onClick={addSubAgent}>
-                  Add Sub-Agent
-                </Button>
               </div>
-              {subAgents.map((sa, i) => (
-                <div key={i} className="space-y-2 rounded-lg border border-border p-3">
-                  <div className="flex justify-between">
-                    <Badge variant="secondary" className="font-mono">Sub-Agent {i + 1}</Badge>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => removeSubAgent(i)}>
-                      Remove
-                    </Button>
-                  </div>
-                  <Input
-                    placeholder="Name"
-                    value={sa.name}
-                    onChange={(e) => updateSubAgent(i, { name: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Description"
-                    value={sa.description}
-                    onChange={(e) => updateSubAgent(i, { description: e.target.value })}
-                  />
-                  <Textarea
-                    placeholder="System Prompt"
-                    value={sa.system_prompt}
-                    onChange={(e) => updateSubAgent(i, { system_prompt: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-
-            <div className="space-y-2 rounded-lg border border-border p-4">
-              <div className="flex justify-between items-center">
-                <h3 className="font-mono text-sm text-muted-foreground">mcp tools</h3>
-              <div className="flex gap-2">
-                <Button type="button" size="sm" variant="outline" onClick={validateTools} disabled={validating || tools.length === 0}>
-                  {validating ? "Validating..." : "Validate Configs"}
-                </Button>
-                <Button type="button" size="sm" variant="outline" onClick={discoverTools} disabled={discovering || tools.length === 0}>
-                  {discovering ? "Discovering..." : "Preview Tools"}
-                </Button>
-                <Button type="button" size="sm" variant="outline" onClick={addTool}>
-                  Add MCP Server
-                </Button>
+              <div>
+                <label className="font-mono text-xs text-muted-foreground uppercase">Description</label>
+                <Input value={description} onChange={(e) => setDescription(e.target.value)} />
               </div>
-            </div>
-            {validationResult && (
-              <div className="mt-3 rounded-lg border border-border p-3 text-sm">
-                <strong className="font-mono text-xs text-muted-foreground uppercase">Validation</strong>{" "}
-                {validationResult.error ? (
-                  <span className="text-red-400">{validationResult.error}</span>
-                ) : validationResult.all_valid ? (
-                  <span className="text-emerald-400">All configs valid</span>
-                ) : (
-                  <ul className="list-disc pl-5 mt-1">
-                    {validationResult.results?.map((r: any, i: number) => (
-                      <li key={i} className={r.valid ? "text-emerald-400" : "text-red-400"}>
-                        {r.name}: {r.valid ? "OK" : r.error}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+              <div>
+                <label className="font-mono text-xs text-muted-foreground uppercase">System Prompt</label>
+                <Textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={4} />
               </div>
-            )}
-            {discoveredTools.length > 0 && (
-              <div className="mt-2 max-h-32 overflow-auto rounded-md bg-muted p-2 font-mono text-xs">
-                <strong>Discovered Tools:</strong>
-                <ul className="list-disc pl-4">
-                  {discoveredTools.map((t, idx) => (
-                    <li key={idx}>{t.name}: {t.description}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {tools.map((tool, i) => (
-              <div key={i} className="space-y-2 rounded-lg border border-border p-3">
-                <div className="flex justify-between">
-                  <Badge variant="secondary" className="font-mono">Tool {i + 1}</Badge>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => removeTool(i)}>
-                    Remove
-                  </Button>
-                </div>
-                <Input
-                  placeholder="Name"
-                  value={tool.name}
-                  onChange={(e) => updateTool(i, { name: e.target.value })}
+              <div>
+                <label className="font-mono text-xs text-muted-foreground uppercase">
+                  Temperature: <span className="text-foreground">{temperature}</span>
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={temperature}
+                  onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                  className="w-full"
                 />
-                <Select
-                  value={tool.transport}
-                  onValueChange={(v: any) => updateTool(i, { transport: v })}
-                >
+              </div>
+
+              {/* Execution & autonomy */}
+              <div className="space-y-3 rounded-lg border border-border p-4">
+                <h3 className="font-mono text-sm text-muted-foreground uppercase">Execution &amp; Autonomy</h3>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="font-mono text-xs text-muted-foreground uppercase">Max Steps</label>
+                    <Input
+                      type="number"
+                      min={3}
+                      max={200}
+                      value={maxSteps}
+                      onChange={(e) => setMaxSteps(parseInt(e.target.value) || 25)}
+                    />
+                  </div>
+                  <div>
+                    <label className="font-mono text-xs text-muted-foreground uppercase">Autonomy Level</label>
+                    <Select value={autonomyLevel} onValueChange={(v: any) => setAutonomyLevel(v ?? "supervised")}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="supervised">Supervised (asks when unsure)</SelectItem>
+                        <SelectItem value="semi_autonomous">Semi-Autonomous</SelectItem>
+                        <SelectItem value="autonomous">Autonomous (plans long-horizon)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="font-mono text-xs text-muted-foreground uppercase">Max Reflections</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={3}
+                      value={maxReflections}
+                      onChange={(e) => setMaxReflections(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={sandboxEnabled} onChange={(e) => setSandboxEnabled(e.target.checked)} />
+                    <span className="font-mono text-xs">sandbox: code, terminal &amp; files (Docker-isolated)</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={planningEnabled} onChange={(e) => setPlanningEnabled(e.target.checked)} />
+                    <span className="font-mono text-xs">planning: long-horizon plan → act → verify</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={reflectEnabled} onChange={(e) => setReflectEnabled(e.target.checked)} />
+                    <span className="font-mono text-xs">self-reflection with confidence + escalation</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="memory"
+                    checked={memoryEnabled}
+                    onChange={(e) => setMemoryEnabled(e.target.checked)}
+                  />
+                  <label htmlFor="memory" className="text-sm">
+                    Enable conversation memory (thread-based windowing)
+                  </label>
+                  {memoryEnabled && (
+                    <div className="flex items-center gap-2 ml-6 text-sm">
+                      <span>Max messages:</span>
+                      <Input
+                        type="number"
+                        min={2}
+                        max={100}
+                        className="w-20 h-8"
+                        value={maxMessages}
+                        onChange={(e) => setMaxMessages(parseInt(e.target.value) || 20)}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="longterm"
+                    checked={longtermEnabled}
+                    onChange={(e) => setLongtermEnabled(e.target.checked)}
+                  />
+                  <label htmlFor="longterm" className="text-sm">
+                    Enable long-term semantic memory (vector store)
+                  </label>
+                  {longtermEnabled && (
+                    <div className="flex items-center gap-2 ml-6 text-sm">
+                      <span>Retrieve k:</span>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={20}
+                        className="w-20 h-8"
+                        value={longtermK}
+                        onChange={(e) => setLongtermK(parseInt(e.target.value) || 5)}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="font-mono text-xs text-muted-foreground uppercase">Workflow Type</label>
+                <Select value={workflowType} onValueChange={(v: any) => setWorkflowType(v)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="stdio">stdio</SelectItem>
-                    <SelectItem value="streamable_http">streamable_http</SelectItem>
-                    <SelectItem value="sse">sse</SelectItem>
+                    <SelectItem value="single">Single Agent</SelectItem>
+                    <SelectItem value="sequential">Sequential Multi-Agent</SelectItem>
+                    <SelectItem value="supervisor">Supervisor Multi-Agent</SelectItem>
+                    <SelectItem value="parallel">Parallel Multi-Agent (Synthesizer)</SelectItem>
+                    <SelectItem value="debate">Debate Multi-Agent (Pro/Con + Judge)</SelectItem>
+                    <SelectItem value="map_reduce">Map-Reduce (Parallel Specialists + Synthesizer)</SelectItem>
                   </SelectContent>
                 </Select>
-                {tool.transport === "stdio" ? (
-                  <>
-                    <Input
-                      placeholder="Command (e.g. python)"
-                      value={tool.command || ""}
-                      onChange={(e) => updateTool(i, { command: e.target.value })}
-                    />
-                    <Input
-                      placeholder="Args (space separated)"
-                      value={(tool.args || []).join(" ")}
-                      onChange={(e) => updateTool(i, { args: e.target.value.split(" ").filter(Boolean) })}
-                    />
-                  </>
-                ) : (
-                  <Input
-                    placeholder="URL (e.g. http://localhost:8001/mcp)"
-                    value={tool.url || ""}
-                    onChange={(e) => updateTool(i, { url: e.target.value })}
-                  />
-                )}
               </div>
-            ))}
-          </div>
 
-          <Button type="submit" disabled={loading}>
-            {loading ? "Saving..." : "Save Agent"}
-          </Button>
-        </form>
+              {workflowType !== "single" && (
+                <div className="space-y-4 rounded-lg border border-border p-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-mono text-sm text-muted-foreground uppercase">
+                      {workflowType === "map_reduce" ? "Mapper Specialists" : "Sub-Agents / Workers"}
+                    </h3>
+                    <Button type="button" size="sm" variant="outline" onClick={addSubAgent}>
+                      Add Sub-Agent
+                    </Button>
+                  </div>
+                  {subAgents.map((sa, i) => (
+                    <div key={i} className="space-y-2 rounded-lg border border-border p-3">
+                      <div className="flex justify-between">
+                        <Badge variant="secondary" className="font-mono">Sub-Agent {i + 1}</Badge>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => removeSubAgent(i)}>
+                          Remove
+                        </Button>
+                      </div>
+                      <Input
+                        placeholder="Name"
+                        value={sa.name}
+                        onChange={(e) => updateSubAgent(i, { name: e.target.value })}
+                      />
+                      <Input
+                        placeholder="Description"
+                        value={sa.description}
+                        onChange={(e) => updateSubAgent(i, { description: e.target.value })}
+                      />
+                      <Textarea
+                        placeholder="System Prompt"
+                        value={sa.system_prompt}
+                        onChange={(e) => updateSubAgent(i, { system_prompt: e.target.value })}
+                        rows={3}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-2 rounded-lg border border-border p-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-mono text-sm text-muted-foreground uppercase">mcp tools</h3>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={validateTools} disabled={validating || tools.length === 0}>
+                      {validating ? "Validating..." : "Validate Configs"}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={discoverTools} disabled={discovering || tools.length === 0}>
+                      {discovering ? "Discovering..." : "Preview Tools"}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={addTool}>
+                      Add MCP Server
+                    </Button>
+                  </div>
+                </div>
+                {validationResult && (
+                  <div className="mt-3 rounded-lg border border-border p-3 text-sm">
+                    <strong className="font-mono text-xs text-muted-foreground uppercase">Validation</strong>{" "}
+                    {validationResult.error ? (
+                      <span className="text-red-400">{validationResult.error}</span>
+                    ) : validationResult.all_valid ? (
+                      <span className="text-emerald-400">All configs valid</span>
+                    ) : (
+                      <ul className="list-disc pl-5 mt-1">
+                        {validationResult.results?.map((r: any, i: number) => (
+                          <li key={i} className={r.valid ? "text-emerald-400" : "text-red-400"}>
+                            {r.name}: {r.valid ? "OK" : r.error}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                {discoveredTools.length > 0 && (
+                  <div className="mt-2 max-h-32 overflow-auto rounded-md bg-muted p-2 font-mono text-xs">
+                    <strong>Discovered Tools:</strong>
+                    <ul className="list-disc pl-4">
+                      {discoveredTools.map((t, idx) => (
+                        <li key={idx}>{t.name}: {t.description}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {tools.map((tool, i) => (
+                  <div key={i} className="space-y-2 rounded-lg border border-border p-3">
+                    <div className="flex justify-between">
+                      <Badge variant="secondary" className="font-mono">Tool {i + 1}</Badge>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => removeTool(i)}>
+                        Remove
+                      </Button>
+                    </div>
+                    <Input
+                      placeholder="Name"
+                      value={tool.name}
+                      onChange={(e) => updateTool(i, { name: e.target.value })}
+                    />
+                    <Select
+                      value={tool.transport}
+                      onValueChange={(v: any) => updateTool(i, { transport: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="stdio">stdio</SelectItem>
+                        <SelectItem value="streamable_http">streamable_http</SelectItem>
+                        <SelectItem value="sse">sse</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {tool.transport === "stdio" ? (
+                      <>
+                        <Input
+                          placeholder="Command (e.g. python)"
+                          value={tool.command || ""}
+                          onChange={(e) => updateTool(i, { command: e.target.value })}
+                        />
+                        <Input
+                          placeholder="Args (space separated)"
+                          value={(tool.args || []).join(" ")}
+                          onChange={(e) => updateTool(i, { args: e.target.value.split(" ").filter(Boolean) })}
+                        />
+                      </>
+                    ) : (
+                      <Input
+                        placeholder="URL (e.g. http://localhost:8001/mcp)"
+                        value={tool.url || ""}
+                        onChange={(e) => updateTool(i, { url: e.target.value })}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <Button type="submit" disabled={loading}>
+                {loading ? "Saving..." : "Save Agent"}
+              </Button>
+            </form>
+          </TabsContent>
+
+          <TabsContent value="yaml">
+            <div className="space-y-3">
+              <p className="font-mono text-xs text-muted-foreground">
+                edit the full agent definition as yaml, then apply to the visual form before saving
+              </p>
+              <Textarea
+                value={yamlText}
+                onChange={(e) => setYamlText(e.target.value)}
+                rows={28}
+                className="font-mono text-xs"
+                spellCheck={false}
+              />
+              {yamlError && <p className="font-mono text-xs text-red-400">{yamlError}</p>}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    if (applyYaml(yamlText)) setEditorMode("visual");
+                  }}
+                >
+                  Apply to Visual Form
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setYamlText(agentToYaml())}>
+                  Reset to Current
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   );

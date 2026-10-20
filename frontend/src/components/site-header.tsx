@@ -8,6 +8,7 @@ import { cn } from "cn";
 const NAV_LINKS = [
   { href: "/agents", label: "Agents" },
   { href: "/marketplace", label: "Marketplace" },
+  { href: "/dashboard", label: "Dashboard" },
 ];
 
 function HeaderInner() {

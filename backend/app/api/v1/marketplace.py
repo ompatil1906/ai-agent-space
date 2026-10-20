@@ -1,4 +1,5 @@
 from typing import Any, List, Optional
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
@@ -6,8 +7,14 @@ from sqlalchemy import func, case
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user
-from app.models import Agent, User, AgentRating
-from app.schemas import AgentPublic, AgentRatingCreate, AgentRatingPublic, AgentWithRating
+from app.models import Agent, User, AgentRating, CreditTransaction, AgentRun
+from app.schemas import (
+    AgentPublic,
+    AgentRatingCreate,
+    AgentRatingPublic,
+    AgentWithRating,
+    LeaderboardEntry,
+)
 
 router = APIRouter()
 
@@ -141,6 +148,10 @@ def clone_agent(
         tools_config=source.tools_config or [],
         memory_config=source.memory_config or {},
         workflow_config=source.workflow_config or {},
+        max_steps=source.max_steps,
+        autonomy_level=source.autonomy_level,
+        sandbox_enabled=source.sandbox_enabled,
+        advanced_config=source.advanced_config or {},
         is_public=False,
         is_published=False,
         price=0,
@@ -173,7 +184,9 @@ def purchase_agent(
     # Transfer credits
     seller = agent.owner
     current_user.credits -= agent.price
+    buyer_balance = current_user.credits
     seller.credits += agent.price
+    seller_balance = seller.credits
 
     # Auto-clone after purchase for convenience
     cloned = Agent(
@@ -185,12 +198,35 @@ def purchase_agent(
         tools_config=agent.tools_config or [],
         memory_config=agent.memory_config or {},
         workflow_config=agent.workflow_config or {},
+        max_steps=agent.max_steps,
+        autonomy_level=agent.autonomy_level,
+        sandbox_enabled=agent.sandbox_enabled,
+        advanced_config=agent.advanced_config or {},
         is_public=False,
         is_published=False,
         price=0,
         owner_id=current_user.id,
     )
     db.add(cloned)
+    purchase_ref = f"purchase-{uuid.uuid4().hex[:12]}"
+    db.add(CreditTransaction(
+        user_id=current_user.id,
+        amount=-agent.price,
+        balance_after=buyer_balance,
+        reason="agent_purchase",
+        counterparty_user_id=seller.id,
+        agent_id=agent.id,
+        reference_id=purchase_ref,
+    ))
+    db.add(CreditTransaction(
+        user_id=seller.id,
+        amount=agent.price,
+        balance_after=seller_balance,
+        reason="agent_sale",
+        counterparty_user_id=current_user.id,
+        agent_id=agent.id,
+        reference_id=purchase_ref,
+    ))
     db.commit()
     db.refresh(current_user)
     return {
@@ -292,3 +328,74 @@ def get_rating_summary(
         "average_rating": float(stats.avg) if stats.avg else None,
         "rating_count": stats.count or 0,
     }
+
+
+@router.get("/leaderboard", response_model=List[LeaderboardEntry])
+def get_leaderboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    limit: int = Query(20, ge=1, le=100),
+) -> Any:
+    """Rank published agents by quality and adoption.
+
+    Composite score (documented + deterministic):
+      score = avg_rating * 20      # quality ceiling 100
+            + rating_count * 2     # social proof
+            + run_count            # real usage
+            + sales_count * 5      # direct adoption via purchase
+
+    Note: aggregated in Python for readability; move to SQL windowing
+    if the marketplace grows past ~10k listings.
+    """
+    runs_by_agent = dict(
+        db.query(AgentRun.agent_id, func.count(AgentRun.id))
+        .group_by(AgentRun.agent_id)
+        .all()
+    )
+    sales_by_agent = dict(
+        db.query(CreditTransaction.agent_id, func.count(CreditTransaction.id))
+        .filter(CreditTransaction.reason == "agent_sale", CreditTransaction.agent_id.isnot(None))
+        .group_by(CreditTransaction.agent_id)
+        .all()
+    )
+    ratings_by_agent: dict[int, tuple[float, int]] = {
+        agent_id: (float(avg or 0.0), int(count))
+        for agent_id, avg, count in (
+            db.query(AgentRating.agent_id, func.avg(AgentRating.rating), func.count(AgentRating.id))
+            .group_by(AgentRating.agent_id)
+            .all()
+        )
+    }
+
+    published = db.query(Agent).filter(Agent.is_published == True).all()  # noqa: E712
+    entries: List[dict] = []
+    for agent in published:
+        run_count = int(runs_by_agent.get(agent.id, 0))
+        sales_count = int(sales_by_agent.get(agent.id, 0))
+        avg_rating, rating_count = ratings_by_agent.get(agent.id, (0.0, 0))
+        score = round(
+            (avg_rating or 0.0) * 20 + rating_count * 2 + run_count + sales_count * 5, 2
+        )
+        entries.append(
+            {
+                "agent_id": agent.id,
+                "agent_name": agent.name,
+                "description": agent.description,
+                "owner_email": agent.owner.email if agent.owner else "unknown",
+                "model_name": agent.model_name,
+                "price": agent.price or 0,
+                "sandbox_enabled": bool(agent.sandbox_enabled),
+                "autonomy_level": agent.autonomy_level or "supervised",
+                "avg_rating": round(avg_rating, 2) if avg_rating else None,
+                "rating_count": rating_count,
+                "run_count": run_count,
+                "sales_count": sales_count,
+                "score": score,
+            }
+        )
+
+    entries.sort(
+        key=lambda e: (e["score"], e["avg_rating"] or 0.0, e["run_count"]),
+        reverse=True,
+    )
+    return [LeaderboardEntry(rank=i + 1, **e) for i, e in enumerate(entries[:limit])]

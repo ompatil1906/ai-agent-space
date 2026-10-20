@@ -39,6 +39,10 @@ def _create_version(db: Session, agent: Agent, created_by: Optional[int] = None,
         "tools_config": agent.tools_config or [],
         "memory_config": agent.memory_config or {},
         "workflow_config": agent.workflow_config or {},
+        "max_steps": agent.max_steps if agent.max_steps is not None else 25,
+        "autonomy_level": agent.autonomy_level or "supervised",
+        "sandbox_enabled": bool(agent.sandbox_enabled),
+        "advanced_config": agent.advanced_config or {},
         "is_public": agent.is_public,
         "is_published": agent.is_published,
         "price": agent.price,
@@ -192,7 +196,9 @@ def restore_agent_version(
     # Restore fields from snapshot
     snap = version.snapshot or {}
     for field in ["name", "description", "system_prompt", "model_name", "temperature",
-                  "tools_config", "memory_config", "workflow_config", "is_public", "is_published", "price"]:
+                  "tools_config", "memory_config", "workflow_config",
+                  "max_steps", "autonomy_level", "sandbox_enabled", "advanced_config",
+                  "is_public", "is_published", "price"]:
         if field in snap:
             setattr(agent, field, snap[field])
     db.add(agent)

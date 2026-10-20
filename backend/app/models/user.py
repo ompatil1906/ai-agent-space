@@ -31,8 +31,15 @@ class Agent(Base):
     model_name = Column(String, default="gpt-4o-mini")
     temperature = Column(Float, default=0.7)
     tools_config = Column(JSON, default=list)  # list of tool configs / MCP server URLs or configs
-    memory_config = Column(JSON, default=dict)  # memory settings e.g. {"enabled": true, "thread_id": "..."}
-    workflow_config = Column(JSON, default=dict)  # multi-agent: {"type": "single|sequential|supervisor", "sub_agents": [...]}
+    memory_config = Column(JSON, default=dict)  # memory settings e.g. {"enabled": true, "max_messages": 20, ...}
+    workflow_config = Column(JSON, default=dict)  # multi-agent: {"type": "single|sequential|supervisor", ...}
+
+    # --- Execution / autonomy (Devin-inspired runtime controls) ---
+    max_steps = Column(Integer, default=25)  # hard cap on runtime iterations (maps to LangGraph recursion_limit)
+    autonomy_level = Column(String, default="supervised")  # supervised | semi_autonomous | autonomous
+    sandbox_enabled = Column(Boolean, default=False)  # expose sandboxed code/terminal/file tools to the agent
+    advanced_config = Column(JSON, default=dict)  # {"planning_enabled": bool, "reflection_enabled": bool, "max_reflections": int}
+
     is_public = Column(Boolean, default=False)
     is_published = Column(Boolean, default=False)
     price = Column(Integer, default=0)  # in cents or credits
@@ -61,6 +68,9 @@ class AgentRun(Base):
     messages = Column(JSON, default=list)  # serialized messages for history
     status = Column(String, default="completed")  # pending, running, completed, error
     error = Column(Text, nullable=True)
+    # --- Observability metrics ---
+    latency_ms = Column(Integer, nullable=True)  # wall-clock duration of the run
+    steps_count = Column(Integer, nullable=True)  # tool calls + agent steps observed in the trace
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -125,8 +135,37 @@ class AgentEvaluation(Base):
     user = relationship("User", back_populates="evaluations")
 
 
-# Add relationships to existing models
+class CreditTransaction(Base):
+    """Immutable credit ledger for marketplace sales/purchases and run metering."""
+    __tablename__ = "credit_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    amount = Column(Integer, nullable=False)  # positive = credit received, negative = credit spent
+    balance_after = Column(Integer, nullable=False)
+    reason = Column(String, nullable=False)  # agent_sale | agent_purchase | run_meter | admin_grant
+    counterparty_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=True)
+    reference_id = Column(String, nullable=True)  # run id / purchase group id
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", foreign_keys=[user_id], remote_side=[User.id])
+
+
+# Relationships registered after class definitions (keeps import order safe)
 User.ratings = relationship("AgentRating", back_populates="user", cascade="all, delete-orphan")
 User.evaluations = relationship("AgentEvaluation", back_populates="user", cascade="all, delete-orphan")
+User.transactions = relationship(
+    "CreditTransaction", foreign_keys="CreditTransaction.user_id", back_populates="user"
+)
 Agent.ratings = relationship("AgentRating", back_populates="agent", cascade="all, delete-orphan")
 Agent.evaluations = relationship("AgentEvaluation", back_populates="agent", cascade="all, delete-orphan")
+Agent.transactions = relationship(
+    "CreditTransaction", foreign_keys="CreditTransaction.agent_id", back_populates="agent", viewonly=True
+)
+CreditTransaction.user = relationship(
+    "User", foreign_keys="CreditTransaction.user_id", back_populates="transactions"
+)
+CreditTransaction.agent = relationship(
+    "Agent", foreign_keys="CreditTransaction.agent_id", back_populates="transactions", viewonly=True
+)

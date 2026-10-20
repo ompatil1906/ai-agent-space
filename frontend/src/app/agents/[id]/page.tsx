@@ -11,11 +11,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { API_BASE } from "@/lib/api";
 
 interface StreamEvent {
-  type: "token" | "tool_call" | "tool_result" | "agent_step" | "done" | "error";
+  type: "token" | "tool_call" | "tool_result" | "agent_step" | "reflection" | "confidence" | "done" | "error";
   content?: string;
   name?: string;
   agent?: string;
   args?: any;
+  round?: number;
+  confidence?: number;
+  escalated?: boolean;
+  output?: string;
 }
 
 function AgentRunContent() {
@@ -31,6 +35,7 @@ function AgentRunContent() {
   const [token, setToken] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(true);
   const [threadId, setThreadId] = useState<string>("");
+  const [finalConfidence, setFinalConfidence] = useState<number | null>(null);
   const [runs, setRuns] = useState<any[]>([]);
   const [selectedRun, setSelectedRun] = useState<any>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -93,6 +98,7 @@ function AgentRunContent() {
 
     const body: any = { input };
     if (threadId) body.thread_id = threadId;
+    setFinalConfidence(null);
 
     try {
       if (streaming) {
@@ -133,14 +139,21 @@ function AgentRunContent() {
                 } else if (parsed.event) {
                   // Alternative format
                   const ev: StreamEvent = { type: parsed.event as any, content: parsed.data };
-                  if (parsed.event === "tool_call" || parsed.event === "tool_result" || parsed.event === "agent_step") {
-                    try {
-                      const inner = typeof parsed.data === "string" ? JSON.parse(parsed.data) : parsed.data;
-                      Object.assign(ev, inner);
-                    } catch {}
+                  try {
+                    const inner = typeof parsed.data === "string" ? JSON.parse(parsed.data) : parsed.data;
+                    Object.assign(ev, inner);
+                  } catch {}
+                  if (parsed.event === "done") {
+                    // done payload may be plain output or a metrics object
+                    if (ev.output != null) {
+                      setFinalOutput(String(ev.output));
+                      if (ev.confidence != null) setFinalConfidence(Number(ev.confidence));
+                    } else {
+                      setFinalOutput(parsed.data || "");
+                    }
+                  } else {
+                    setEvents((prev) => [...prev, ev]);
                   }
-                  setEvents((prev) => [...prev, ev]);
-                  if (parsed.event === "done") setFinalOutput(parsed.data || "");
                 }
               } catch {
                 // plain token
@@ -224,6 +237,24 @@ function AgentRunContent() {
         </div>
       );
     }
+    if (ev.type === "reflection") {
+      return (
+        <div key={idx} className="my-2 font-mono text-xs text-muted-foreground">
+          ⟳ self-check round {ev.round}: interrupted — revised answers follow
+        </div>
+      );
+    }
+    if (ev.type === "confidence") {
+      const pct = Math.round((Number(ev.confidence ?? ev.content ?? 0)) * 100);
+      return (
+        <div key={idx} className="my-2 flex items-center gap-2 font-mono text-xs">
+          <span className={pct >= 70 ? "text-emerald-300" : pct >= 40 ? "text-amber-300" : "text-red-300"}>
+            ◎ confidence {pct}%
+          </span>
+          {ev.escalated && <span className="text-muted-foreground">· flagged for review (NEEDS HELP)</span>}
+        </div>
+      );
+    }
     if (ev.type === "done") {
       return null; // shown separately
     }
@@ -293,7 +324,14 @@ function AgentRunContent() {
             {events.map(renderEvent)}
             {finalOutput && (
               <div className="mt-4 pt-4 border-t border-border">
-                <div className="mb-1 font-mono text-xs text-muted-foreground">final response:</div>
+                <div className="mb-1 flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                  final response:
+                  {finalConfidence != null && (
+                    <Badge variant="outline" className="font-mono">
+                      {(finalConfidence * 100).toFixed(0)}% confident
+                    </Badge>
+                  )}
+                </div>
                 <div className="whitespace-pre-wrap">{finalOutput}</div>
               </div>
             )}

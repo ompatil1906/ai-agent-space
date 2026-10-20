@@ -1,13 +1,17 @@
 """
 Advanced LangGraph-based agent runtime with streaming, memory, MCP tools,
-and multi-agent orchestration (single / sequential / supervisor / parallel / debate / map_reduce).
+sandboxed execution tools, long-horizon planning, Reflexion-style
+self-correction with confidence estimation, and multi-agent orchestration
+(single / sequential / supervisor / parallel / debate / map_reduce).
 
 Memory: Uses MemorySaver by default. Switches to PostgresSaver when
 DATABASE_URL is PostgreSQL and the package is installed (production-ready).
 """
 from typing import Any, AsyncGenerator, Dict, List, Optional, TypedDict, Annotated
 import operator
+import json
 import logging
+import time
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -21,8 +25,14 @@ from app.services.mcp_service import mcp_service
 
 logger = logging.getLogger(__name__)
 
-class AgentState(TypedDict):
+END_SENTINEL = "__end__"
+
+
+class AgentState(TypedDict, total=False):
     messages: Annotated[List[BaseMessage], operator.add]
+    attempts: int  # reflection rounds consumed
+    confidence: float  # self-estimated completion confidence (0-1)
+    escalated: bool  # True when the agent wants a human in the loop
 
 
 def get_checkpointer():
@@ -58,9 +68,10 @@ def get_llm(model_name: str, temperature: float, base_url: Optional[str] = None)
         kwargs["base_url"] = effective_base
     return ChatOpenAI(**kwargs)
 
+
 def apply_memory_window(messages: List[BaseMessage], memory_config: Dict[str, Any]) -> List[BaseMessage]:
     """Apply simple memory windowing based on memory_config.
-    
+
     Supported keys:
     - enabled: bool
     - max_messages: int (keep last N messages, default 20)
@@ -77,16 +88,51 @@ def apply_memory_window(messages: List[BaseMessage], memory_config: Dict[str, An
     return messages[-max_msgs:]
 
 
-
-
-
 def _should_continue(state: AgentState) -> str:
     last = state["messages"][-1]
     if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
         return "tools"
-    return END
+    return "agent_done"
 
 
+PLANNING_DIRECTIVE = (
+    "\n\n# Operating procedure\n"
+    "1. PLAN: Before acting, silently outline the full sequence of steps needed to complete the task. "
+    "Then state the plan briefly in your first reply under a 'Plan:' line.\n"
+    "2. EXECUTE: Work through steps with tools. Prefer the smallest action that yields information.\n"
+    "3. OBSERVE: After each tool result, explicitly evaluate: did it succeed? Does the plan change?\n"
+    "4. DEBUG: When something fails, read the error carefully, form a hypothesis, and test the fix — "
+    "do not simply repeat the same failing action.\n"
+    "5. FINISH: Only conclude when every plan step is verifiably done. "
+    "If you cannot proceed (missing access, impossible requirement, repeated failure), reply with a "
+    "line starting 'NEEDS HELP:' followed by the specific reason, and provide your best partial result."
+)
+
+
+def _base_system_prompt(base_prompt: str, agent_config: Dict[str, Any]) -> str:
+    """Compose the effective system prompt: planning directive + autonomy escalation rules."""
+    advanced = agent_config.get("advanced_config") or {}
+    autonomy = (agent_config.get("autonomy_level") or "supervised").lower()
+    prompt = base_prompt
+
+    if advanced.get("planning_enabled") or autonomy in ("semi_autonomous", "autonomous"):
+        prompt += PLANNING_DIRECTIVE
+
+    if autonomy == "supervised":
+        prompt += (
+            "\n\nAutonomy policy: You are operating under supervision. If the task requires actions "
+            "you are not explicitly authorized for, or you are below 70% confidence in any destructive "
+            "or irreversible action, stop and output 'NEEDS HELP: <reason>' instead of acting."
+        )
+    return prompt
+
+
+def _reflection_config(agent_config: Dict[str, Any]) -> Dict[str, Any]:
+    advanced = agent_config.get("advanced_config") or {}
+    return {
+        "enabled": bool(advanced.get("reflection_enabled")),
+        "max_rounds": int(advanced.get("max_reflections", 2) or 0),
+    }
 
 
 def get_enhanced_system_prompt(
@@ -95,14 +141,16 @@ def get_enhanced_system_prompt(
     state: AgentState,
 ) -> str:
     """Inject relevant long-term memories into the system prompt when enabled."""
+    prompt = _base_system_prompt(base_prompt, agent_config)
+
     mem_cfg = agent_config.get("memory_config") or {}
     if not mem_cfg.get("longterm_enabled"):
-        return base_prompt
+        return prompt
 
     agent_id = agent_config.get("id")
     user_id = agent_config.get("user_id")
     if not agent_id or not user_id:
-        return base_prompt
+        return prompt
 
     # Use the most recent human message as the retrieval query
     query = ""
@@ -111,19 +159,19 @@ def get_enhanced_system_prompt(
             query = getattr(msg, "content", "") or ""
             break
     if not query:
-        return base_prompt
+        return prompt
 
     try:
         from app.services.memory_service import get_memory_service
         k = int(mem_cfg.get("longterm_k", 5))
         memories = get_memory_service().retrieve(int(agent_id), int(user_id), query, k=k)
         if not memories:
-            return base_prompt
+            return prompt
         mem_block = "\n".join(f"- {m}" for m in memories)
-        return f"{base_prompt}\n\nRelevant long-term memories (use if helpful):\n{mem_block}"
+        return f"{prompt}\n\nRelevant long-term memories (use if helpful):\n{mem_block}"
     except Exception as e:
         logger.debug("Long-term memory retrieval skipped: %s", e)
-        return base_prompt
+        return prompt
 
 
 def store_interaction_memory(
@@ -151,8 +199,26 @@ def store_interaction_memory(
     except Exception as e:
         logger.debug("Failed to store long-term memory: %s", e)
 
+
+def _build_node_call_model(llm, agent_config, fallback_prompt: str, node_label: str):
+    """Standard model-calling node used across graph builders."""
+    def call_model(state: AgentState):
+        mem_cfg = agent_config.get("memory_config") or {}
+        history = apply_memory_window(state["messages"], mem_cfg)
+        enhanced = get_enhanced_system_prompt(fallback_prompt, agent_config, state)
+        messages = [SystemMessage(content=enhanced)] + history
+        response = llm.invoke(messages)
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = agent_config.get("name", "agent")
+        if node_label:
+            response.additional_kwargs["node"] = node_label
+        return {"messages": [response]}
+
+    return call_model
+
+
 def build_single_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
-    """Build a standard ReAct-style agent with optional tools."""
+    """ReAct agent with optional tools and an optional Reflexion self-check loop."""
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
     system_prompt = agent_config.get("system_prompt", "You are a helpful AI assistant.")
@@ -162,29 +228,105 @@ def build_single_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[
     if tools:
         llm = llm.bind_tools(tools)
 
-    def call_model(state: AgentState):
-        mem_cfg = agent_config.get("memory_config") or {}
-        history = apply_memory_window(state["messages"], mem_cfg)
-        enhanced = get_enhanced_system_prompt(system_prompt, agent_config, state)
-        messages = [SystemMessage(content=enhanced)] + history
-        response = llm.invoke(messages)
-        response.additional_kwargs = response.additional_kwargs or {}
-        response.additional_kwargs["agent"] = agent_config.get("name", "agent")
-        return {"messages": [response]}
-
     workflow = StateGraph(AgentState)
-    workflow.add_node("agent", call_model)
+    workflow.add_node("agent", _build_node_call_model(llm, agent_config, system_prompt, "agent"))
     workflow.set_entry_point("agent")
+
+    reflect_cfg = _reflection_config(agent_config)
 
     if tools:
         tool_node = ToolNode(tools)
         workflow.add_node("tools", tool_node)
-        workflow.add_conditional_edges("agent", _should_continue, {"tools": "tools", END: END})
+        if reflect_cfg["enabled"] and reflect_cfg["max_rounds"] > 0:
+            workflow.add_conditional_edges(
+                "agent",
+                _should_continue,
+                {"tools": "tools", "agent_done": "reflect"},
+            )
+            workflow.add_node("reflect", _make_reflect_node(agent_config, reflect_cfg["max_rounds"]))
+            workflow.add_edge("reflect", "agent")
+        else:
+            workflow.add_conditional_edges("agent", _should_continue, {"tools": "tools", "agent_done": END})
         workflow.add_edge("tools", "agent")
     else:
-        workflow.add_edge("agent", END)
+        if reflect_cfg["enabled"] and reflect_cfg["max_rounds"] > 0:
+            workflow.add_conditional_edges("agent", _should_continue, {"tools": "tools", "agent_done": "reflect"})
+            workflow.add_node("reflect", _make_reflect_node(agent_config, reflect_cfg["max_rounds"]))
+            workflow.add_edge("reflect", "agent")
+        else:
+            workflow.add_edge("agent", END)
 
     return workflow.compile(checkpointer=checkpointer)
+
+
+def _make_reflect_node(agent_config: Dict[str, Any], max_rounds: int):
+    """
+    Reflexion-style self-assessment node: the model judges whether the task
+    is fully complete, outputs structured JSON, and either accepts the answer
+    or injects a critique back into the loop.
+    """
+    proceed_llm = get_llm(
+        agent_config.get("model_name", "gpt-4o-mini"),
+        max(0.0, min(0.2, agent_config.get("temperature", 0.7))),
+        agent_config.get("base_url") or agent_config.get("openai_base_url"),
+    )
+
+    def reflect(state: AgentState):
+        messages = state.get("messages", [])
+
+        def _content(msg) -> str:
+            return getattr(msg, "content", "") or ""
+
+        task = next((_content(m) for m in messages if isinstance(m, HumanMessage)), "")
+        last = next((_content(m) for m in reversed(messages) if isinstance(m, AIMessage)), "")
+
+        judge_prompt = (
+            "You are the self-check module of an autonomous agent. Decide whether the draft answer "
+            "fully completes the user's task with no significant gaps, errors, or unverified claims.\n"
+            "Reply ONLY with JSON:\n"
+            '{"complete": true/false, "confidence": <float 0-1>, "critique": "<what is missing or wrong>", '
+            '"needs_help": true/false, "help_reason": "<why human help is required or empty>"}\n\n'
+            f"USER TASK:\n{task[:4000]}\n\n"
+            f"DRAFT ANSWER:\n{last[:4000]}"
+        )
+        verdict = {"complete": True, "confidence": 0.6, "critique": "", "needs_help": False, "help_reason": ""}
+        try:
+            raw = proceed_llm.invoke([HumanMessage(content=judge_prompt)]).content or ""
+            start, end = raw.find("{"), raw.rfind("}") + 1
+            if start >= 0 and end > start:
+                verdict.update(json.loads(raw[start:end]))
+        except Exception as e:
+            logger.debug("Reflection judge parse failed: %s", e)
+
+        confidence = max(0.0, min(1.0, float(verdict.get("confidence", 0.5) or 0.5)))
+        attempts = int(state.get("attempts", 0))
+        needs_help = bool(verdict.get("needs_help", False))
+
+        if verdict.get("complete", True) or attempts >= max_rounds:
+            update: Dict[str, Any] = {"confidence": confidence, "attempts": attempts + 1}
+            if needs_help or confidence < 0.35:
+                update["escalated"] = needs_help or confidence < 0.35
+            last_msg = messages[-1]
+            if isinstance(last_msg, AIMessage):
+                kw = last_msg.additional_kwargs or {}
+                kw["confidence"] = confidence
+                kw["escalated"] = update.get("escalated", False)
+                if needs_help and verdict.get("help_reason"):
+                    kw["help_reason"] = str(verdict["help_reason"])[:500]
+            return update
+
+        critique = str(verdict.get("critique") or "The answer is incomplete; identify the gaps and finish them.")
+        critique_msg = HumanMessage(
+            content=(
+                f"[Self-check feedback, round {attempts + 1}/{max_rounds}] Your previous answer did not fully "
+                f"complete the task: {critique}\n"
+                "Fix the specific problems now. Do not repeat the same work; continue from where you left off "
+                "and verify your result."
+            )
+        )
+        return {"messages": [critique_msg], "attempts": attempts + 1, "confidence": confidence}
+
+    return reflect
 
 
 def build_sequential_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
@@ -229,7 +371,7 @@ def build_sequential_graph(agent_config: Dict[str, Any], tools: Optional[List[An
     if tools:
         tool_node = ToolNode(tools)
         workflow.add_node("tools", tool_node)
-        workflow.add_conditional_edges(prev, _should_continue, {"tools": "tools", END: END})
+        workflow.add_conditional_edges(prev, _should_continue, {"tools": "tools", "agent_done": END})
         workflow.add_edge("tools", prev)
     else:
         workflow.add_edge(prev, END)
@@ -564,12 +706,27 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
 
 
 async def _load_tools(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None) -> Optional[List[Any]]:
+    """
+    Assemble the tool belt: any pre-supplied tools + MCP tools + sandbox tools
+    (when the agent opts into sandbox execution).
+    """
     if tools is not None:
         return tools
-    tools_config = agent_config.get("tools_config") or []
-    if tools_config:
-        return await mcp_service.get_tools(tools_config)
-    return None
+
+    agent_tools: List[Any] = []
+
+    mcp_config = agent_config.get("tools_config") or []
+    if mcp_config:
+        agent_tools.extend(await mcp_service.get_tools(mcp_config) or [])
+
+    if agent_config.get("sandbox_enabled"):
+        from app.agents.tools import build_sandbox_tools
+
+        workspace = agent_config.get("workspace")
+        if workspace:
+            agent_tools.extend(build_sandbox_tools(str(workspace)))
+
+    return agent_tools or None
 
 
 async def run_agent(
@@ -577,17 +734,27 @@ async def run_agent(
     user_input: str,
     thread_id: Optional[str] = None,
     tools: Optional[List[Any]] = None,
-) -> str:
-    """Non-streaming agent run (supports multi-agent)."""
+) -> Dict[str, Any]:
+    """
+    Non-streaming agent run (supports multi-agent).
+    Returns {"output", "confidence", "escalated"}.
+    """
     tools = await _load_tools(agent_config, tools)
     graph = build_agent_graph(agent_config, tools)
-    config = {"configurable": {"thread_id": thread_id or "default"}}
-    initial_state = {"messages": [HumanMessage(content=user_input)]}
+    config = {
+        "configurable": {"thread_id": thread_id or "default"},
+        "recursion_limit": max(10, int(agent_config.get("max_steps") or 25)),
+    }
+    initial_state: AgentState = {"messages": [HumanMessage(content=user_input)], "attempts": 0}
     result = await graph.ainvoke(initial_state, config=config)
     last_message = result["messages"][-1]
     output = last_message.content if hasattr(last_message, "content") else str(last_message)
     store_interaction_memory(agent_config, user_input, output)
-    return output
+    return {
+        "output": output,
+        "confidence": float(result.get("confidence", 0.0) or 0.0),
+        "escalated": bool(result.get("escalated", False)),
+    }
 
 
 async def stream_agent(
@@ -601,14 +768,20 @@ async def stream_agent(
     - {"type": "token", "content": "..."}
     - {"type": "tool_call", "name": "...", "args": {...}}
     - {"type": "tool_result", "name": "...", "content": "..."}
-    - {"type": "done", "content": full_output}
+    - {"type": "agent_step", "agent": "...", "content": "..."}
+    - {"type": "reflection", "content": critique, "round": n}
+    - {"type": "confidence", "content": 0.87, "escalated": bool}
+    - {"type": "done", "content": full_output, "confidence": ...}
     - {"type": "error", "content": "..."}
     """
     try:
         tools = await _load_tools(agent_config, tools)
         graph = build_agent_graph(agent_config, tools)
-        config = {"configurable": {"thread_id": thread_id or f"run-{hash(user_input)}"}}
-        initial_state = {"messages": [HumanMessage(content=user_input)]}
+        config = {
+            "configurable": {"thread_id": thread_id or f"run-{hash(user_input)}"},
+            "recursion_limit": max(10, int(agent_config.get("max_steps") or 25)),
+        }
+        initial_state: AgentState = {"messages": [HumanMessage(content=user_input)], "attempts": 0}
 
         full_output = ""
         async for event in graph.astream_events(initial_state, config=config, version="v2"):
@@ -645,6 +818,23 @@ async def stream_agent(
                     "name": event.get("name", "tool"),
                     "content": str(output)[:2000],
                 }
+
+            elif kind == "on_chain_end" and name == "reflect":
+                output = event.get("data", {}).get("output", {}) or {}
+                if isinstance(output, dict) and output.get("messages"):
+                    for msg in output["messages"]:
+                        if isinstance(msg, HumanMessage) and "Self-check feedback" in str(getattr(msg, "content", "")):
+                            yield {
+                                "type": "reflection",
+                                "round": int(output.get("attempts", 1)),
+                                "content": str(msg.content)[:1500],
+                            }
+                if isinstance(output, dict) and "confidence" in output:
+                    yield {
+                        "type": "confidence",
+                        "content": float(output.get("confidence", 0.0) or 0.0),
+                        "escalated": bool(output.get("escalated", False)),
+                    }
 
             elif kind == "on_chain_end":
                 output = event.get("data", {}).get("output", {})
@@ -710,3 +900,7 @@ def serialize_messages(messages: List[BaseMessage]) -> List[Dict[str, Any]]:
             "additional_kwargs": getattr(msg, "additional_kwargs", {}),
         })
     return result
+
+
+def now_ms() -> int:
+    return int(time.monotonic() * 1000)

@@ -1,4 +1,20 @@
 # Re-export models for easy imports
-from app.models.user import User, Agent, AgentRun, AgentVersion, AgentRating, AgentEvaluation
+from app.models.user import (
+    User,
+    Agent,
+    AgentRun,
+    AgentVersion,
+    AgentRating,
+    AgentEvaluation,
+    CreditTransaction,
+)
 
-__all__ = ["User", "Agent", "AgentRun", "AgentVersion", "AgentRating", "AgentEvaluation"]
+__all__ = [
+    "User",
+    "Agent",
+    "AgentRun",
+    "AgentVersion",
+    "AgentRating",
+    "AgentEvaluation",
+    "CreditTransaction",
+]
