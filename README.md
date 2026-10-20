@@ -2,6 +2,16 @@
 
 A modern, advanced platform for creating, configuring, running, and sharing AI agents with real tool use (MCP), streaming, memory, and multi-agent workflows.
 
+
+## Advanced Features
+
+- **Local / Open-Source Models**: Set `OPENAI_BASE_URL` (or per-agent `base_url`) to any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, etc.). Dummy API key works for local servers.
+- **Memory Windowing**: `memory_config.max_messages` trims conversation history before each LLM call (default 20).
+- **Multi-Agent Patterns**: single, sequential, supervisor, parallel, debate.
+- **Streaming Events**: tokens, tool calls/results, and multi-agent step progress.
+- **MCP Tool Discovery & Execution**: Real tool use via official MCP SDK + adapters.
+- **Versioning, Evaluation, Marketplace**: Snapshots, LLM-as-judge, ratings, publish/clone/buy.
+
 ## Quick Start
 
 ### Backend

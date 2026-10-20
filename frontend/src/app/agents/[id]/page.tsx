@@ -10,9 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { API_BASE } from "@/lib/api";
 
 interface StreamEvent {
-  type: "token" | "tool_call" | "tool_result" | "done" | "error";
+  type: "token" | "tool_call" | "tool_result" | "agent_step" | "done" | "error";
   content?: string;
   name?: string;
+  agent?: string;
   args?: any;
 }
 

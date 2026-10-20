@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
     DATABASE_URL: str = "sqlite:///./sql_app.db"
     OPENAI_API_KEY: str = ""
+    OPENAI_BASE_URL: str = ""  # Optional: for Ollama, LM Studio, vLLM, etc. (e.g. http://localhost:11434/v1)
     CORS_ORIGINS: str = "*"
 
     model_config = SettingsConfigDict(

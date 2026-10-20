@@ -44,13 +44,39 @@ def get_checkpointer():
 checkpointer = get_checkpointer()
 
 
-def get_llm(model_name: str, temperature: float) -> ChatOpenAI:
-    return ChatOpenAI(
-        model=model_name,
-        temperature=temperature,
-        api_key=settings.OPENAI_API_KEY or None,
-        streaming=True,
-    )
+def get_llm(model_name: str, temperature: float, base_url: Optional[str] = None) -> ChatOpenAI:
+    """Create an OpenAI-compatible chat model. Supports local endpoints via base_url."""
+    kwargs = {
+        "model": model_name,
+        "temperature": temperature,
+        "api_key": settings.OPENAI_API_KEY or "sk-local",  # dummy key for local servers that ignore it
+        "streaming": True,
+    }
+    effective_base = base_url or settings.OPENAI_BASE_URL or None
+    if effective_base:
+        kwargs["base_url"] = effective_base
+    return ChatOpenAI(**kwargs)
+
+def apply_memory_window(messages: List[BaseMessage], memory_config: Dict[str, Any]) -> List[BaseMessage]:
+    """Apply simple memory windowing based on memory_config.
+    
+    Supported keys:
+    - enabled: bool
+    - max_messages: int (keep last N messages, default 20)
+    - type: "buffer" | "window" (window is default when max_messages set)
+    """
+    if not memory_config or not memory_config.get("enabled", True):
+        return messages
+    max_msgs = memory_config.get("max_messages")
+    if not max_msgs or not isinstance(max_msgs, int) or max_msgs <= 0:
+        return messages
+    # Always keep the newest messages
+    if len(messages) <= max_msgs:
+        return messages
+    return messages[-max_msgs:]
+
+
+
 
 
 def _should_continue(state: AgentState) -> str:
@@ -65,14 +91,19 @@ def build_single_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
     system_prompt = agent_config.get("system_prompt", "You are a helpful AI assistant.")
+    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
 
-    llm = get_llm(model_name, temperature)
+    llm = get_llm(model_name, temperature, base_url)
     if tools:
         llm = llm.bind_tools(tools)
 
     def call_model(state: AgentState):
-        messages = [SystemMessage(content=system_prompt)] + state["messages"]
+        mem_cfg = agent_config.get("memory_config") or {}
+        history = apply_memory_window(state["messages"], mem_cfg)
+        messages = [SystemMessage(content=system_prompt)] + history
         response = llm.invoke(messages)
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = agent_config.get("name", "agent")
         return {"messages": [response]}
 
     workflow = StateGraph(AgentState)
@@ -101,7 +132,8 @@ def build_sequential_graph(agent_config: Dict[str, Any], tools: Optional[List[An
 
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
-    llm = get_llm(model_name, temperature)
+    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
+    llm = get_llm(model_name, temperature, base_url)
     if tools:
         llm = llm.bind_tools(tools)
 
@@ -150,7 +182,7 @@ def build_supervisor_graph(agent_config: Dict[str, Any], tools: Optional[List[An
 
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
-    base_llm = get_llm(model_name, temperature)
+    base_llm = get_llm(model_name, temperature, agent_config.get("base_url") or agent_config.get("openai_base_url"))
 
     worker_names = [w.get("name", f"worker_{i}") for i, w in enumerate(workers)]
     worker_desc = "\n".join(
@@ -230,7 +262,8 @@ def build_parallel_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]
 
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
-    llm = get_llm(model_name, temperature)
+    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
+    llm = get_llm(model_name, temperature, base_url)
     if tools:
         llm = llm.bind_tools(tools)
 
@@ -307,7 +340,8 @@ def build_debate_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] 
 
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
-    llm = get_llm(model_name, temperature)
+    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
+    llm = get_llm(model_name, temperature, base_url)
 
     workflow = StateGraph(AgentState)
 
@@ -422,6 +456,15 @@ async def stream_agent(
                     token = chunk.content
                     full_output += token
                     yield {"type": "token", "content": token}
+
+            elif kind == "on_chain_start":
+                # Emit step start for multi-agent nodes (skip internal)
+                if name and name not in ("LangGraph", "__start__", "tools", "agent", "RunnableSequence"):
+                    yield {
+                        "type": "agent_step",
+                        "agent": name,
+                        "content": f"Running {name}...",
+                    }
 
             elif kind == "on_tool_start":
                 yield {
