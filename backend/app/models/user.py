@@ -75,6 +75,7 @@ class AgentRun(Base):
     output_tokens = Column(Integer, nullable=True, default=0)
     total_tokens = Column(Integer, nullable=True, default=0)
     estimated_cost_usd = Column(Float, nullable=True, default=0.0)  # rough estimate based on model pricing
+    thread_id = Column(String, index=True, nullable=True)  # LangGraph checkpointer thread for multi-turn memory
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

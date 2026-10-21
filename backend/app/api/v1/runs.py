@@ -63,11 +63,13 @@ async def run_agent_endpoint(
     started_ms = now_ms()
 
     # Create run record
+    thread_id = request.thread_id or str(uuid.uuid4())
     run = AgentRun(
         agent_id=agent_id,
         user_id=current_user.id,
         input=request.input,
         status="running",
+        thread_id=thread_id,
     )
     db.add(run)
     # Deduct 1 credit for the run
@@ -86,7 +88,7 @@ async def run_agent_endpoint(
         result = await run_agent(
             agent_config,
             request.input,
-            thread_id=request.thread_id or str(run.id),
+            thread_id=thread_id,
         )
         usage = result.get("usage") or {}
         run.output = result["output"]
@@ -101,10 +103,10 @@ async def run_agent_endpoint(
             output=result["output"],
             agent_id=agent_id,
             run_id=run.id,
+            thread_id=thread_id,
             confidence=result.get("confidence"),
             latency_ms=run.latency_ms,
             usage=usage,
-        )
         )
     except Exception as e:
         run.status = "error"
@@ -144,6 +146,7 @@ async def stream_agent_endpoint(
         user_id=current_user.id,
         input=request.input,
         status="running",
+        thread_id=request.thread_id or str(uuid.uuid4()),
     )
     db.add(run)
     current_user.credits -= 1
@@ -157,7 +160,7 @@ async def stream_agent_endpoint(
     db.commit()
     db.refresh(run)
 
-    thread_id = request.thread_id or str(run.id)
+    thread_id = run.thread_id
     started_ms = now_ms()
 
     async def event_generator():
@@ -219,6 +222,8 @@ async def stream_agent_endpoint(
                         "event": "done",
                         "data": json.dumps({
                             "output": run.output,
+                            "thread_id": thread_id,
+                            "run_id": run.id,
                             "confidence": collected_events and next(
                                 (e.get("content") for e in reversed(collected_events) if e.get("type") == "confidence"),
                                 None,
@@ -377,6 +382,54 @@ async def list_agent_runs(
         .all()
     )
     return runs
+
+
+@router.get("/{agent_id}/threads")
+async def list_agent_threads(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    limit: int = 30,
+):
+    """List distinct conversation threads for this agent (grouped by thread_id), newest first."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent or (agent.owner_id != current_user.id and not agent.is_public):
+        raise HTTPException(status_code=404, detail="Agent not found or access denied")
+
+    from sqlalchemy import func
+    # Get latest run per thread_id
+    subq = (
+        db.query(
+            AgentRun.thread_id,
+            func.max(AgentRun.created_at).label("last_at"),
+        )
+        .filter(
+            AgentRun.agent_id == agent_id,
+            AgentRun.user_id == current_user.id,
+            AgentRun.thread_id.isnot(None),
+        )
+        .group_by(AgentRun.thread_id)
+        .subquery()
+    )
+    rows = (
+        db.query(AgentRun)
+        .join(subq, (AgentRun.thread_id == subq.c.thread_id) & (AgentRun.created_at == subq.c.last_at))
+        .order_by(AgentRun.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "thread_id": r.thread_id,
+            "last_input": r.input[:120] + ("…" if len(r.input) > 120 else ""),
+            "last_output": (r.output or "")[:200] + ("…" if r.output and len(r.output) > 200 else ""),
+            "updated_at": r.created_at.isoformat(),
+            "run_count": db.query(func.count(AgentRun.id)).filter(
+                AgentRun.thread_id == r.thread_id, AgentRun.user_id == current_user.id
+            ).scalar() or 0,
+        }
+        for r in rows
+    ]
 
 
 @router.get("/runs/all", response_model=List[AgentRunPublic])

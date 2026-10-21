@@ -34,12 +34,15 @@ function AgentRunContent() {
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(true);
-  const [threadId, setThreadId] = useState<string>("");
+  const [currentThreadId, setCurrentThreadId] = useState<string>("");
+  const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string; events?: StreamEvent[] }[]>([]);
+  const [threads, setThreads] = useState<any[]>([]);
   const [finalConfidence, setFinalConfidence] = useState<number | null>(null);
   const [runs, setRuns] = useState<any[]>([]);
   const [selectedRun, setSelectedRun] = useState<any>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   
   const loadMemories = async () => {
@@ -68,37 +71,51 @@ function AgentRunContent() {
       return;
     }
     setToken(t);
+    // Start a fresh thread by default
+    setCurrentThreadId(crypto.randomUUID());
     fetch(`${API_BASE}/agents/${agentId}`, {
       headers: { Authorization: `Bearer ${t}` },
     })
       .then((r) => r.json())
       .then(setAgent);
 
-    // Load conversation history
+    // Load conversation history and threads
     fetch(`${API_BASE}/agents/${agentId}/runs`, {
       headers: { Authorization: `Bearer ${t}` },
     })
       .then((r) => r.ok ? r.json() : [])
       .then(setRuns)
       .catch(() => setRuns([]));
+
+    fetch(`${API_BASE}/agents/${agentId}/threads`, {
+      headers: { Authorization: `Bearer ${t}` },
+    })
+      .then((r) => r.ok ? r.json() : [])
+      .then(setThreads)
+      .catch(() => setThreads([]));
   }, [agentId]);
 
   useEffect(() => {
     if (outputRef.current) {
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
     }
-  }, [events, finalOutput]);
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [events, finalOutput, chatHistory]);
 
   const runAgent = async () => {
     if (!token || !input) return;
+    const userMessage = input;
+    setInput("");
     setLoading(true);
     setEvents([]);
     setFinalOutput("");
+    setFinalConfidence(null);
     abortControllerRef.current = new AbortController();
 
-    const body: any = { input };
-    if (threadId) body.thread_id = threadId;
-    setFinalConfidence(null);
+    // Append user turn immediately
+    setChatHistory((prev) => [...prev, { role: "user", content: userMessage }]);
+
+    const body: any = { input: userMessage, thread_id: currentThreadId };
 
     try {
       if (streaming) {
@@ -117,6 +134,8 @@ function AgentRunContent() {
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let assistantContent = "";
+        const turnEvents: StreamEvent[] = [];
 
         while (reader) {
           const { done, value } = await reader.read();
@@ -131,37 +150,45 @@ function AgentRunContent() {
               if (data === "[DONE]") continue;
               try {
                 const parsed = JSON.parse(data);
-                // SSE events come as {event, data} from backend or direct
-                // We accumulate structured events
                 if (parsed.type) {
+                  turnEvents.push(parsed);
                   setEvents((prev) => [...prev, parsed]);
-                  if (parsed.type === "done") setFinalOutput(parsed.content || "");
+                  if (parsed.type === "token") assistantContent += parsed.content || "";
+                  if (parsed.type === "done") {
+                    setFinalOutput(parsed.content || assistantContent);
+                    setChatHistory((prev) => [...prev, { role: "assistant", content: parsed.content || assistantContent, events: turnEvents }]);
+                  }
                 } else if (parsed.event) {
-                  // Alternative format
                   const ev: StreamEvent = { type: parsed.event as any, content: parsed.data };
                   try {
                     const inner = typeof parsed.data === "string" ? JSON.parse(parsed.data) : parsed.data;
                     Object.assign(ev, inner);
                   } catch {}
+                  turnEvents.push(ev);
+                  if (parsed.event === "token") assistantContent += String(parsed.data || "");
                   if (parsed.event === "done") {
-                    // done payload may be plain output or a metrics object
-                    if (ev.output != null) {
-                      setFinalOutput(String(ev.output));
-                      if (ev.confidence != null) setFinalConfidence(Number(ev.confidence));
-                    } else {
-                      setFinalOutput(parsed.data || "");
-                    }
+                    const out = ev.output != null ? String(ev.output) : (parsed.data || assistantContent);
+                    setFinalOutput(out);
+                    if (ev.confidence != null) setFinalConfidence(Number(ev.confidence));
+                    setChatHistory((prev) => [...prev, { role: "assistant", content: out, events: turnEvents }]);
                   } else {
                     setEvents((prev) => [...prev, ev]);
                   }
                 }
               } catch {
                 // plain token
-                setEvents((prev) => [...prev, { type: "token", content: data }]);
+                const tokenEv: StreamEvent = { type: "token", content: data };
+                turnEvents.push(tokenEv);
+                setEvents((prev) => [...prev, tokenEv]);
+                assistantContent += data;
                 setFinalOutput((prev) => prev + data);
               }
             }
           }
+        }
+        // If no explicit done was received, still append what we have
+        if (assistantContent && !turnEvents.some(e => e.type === "done")) {
+          setChatHistory((prev) => [...prev, { role: "assistant", content: assistantContent, events: turnEvents }]);
         }
       } else {
         const res = await fetch(`${API_BASE}/agents/${agentId}/run`, {
@@ -174,16 +201,21 @@ function AgentRunContent() {
         });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
-        setFinalOutput(data.output || "");
-        setEvents([{ type: "done", content: data.output }]);
+        const out = data.output || "";
+        setFinalOutput(out);
+        setEvents([{ type: "done", content: out }]);
+        setChatHistory((prev) => [...prev, { role: "assistant", content: out }]);
+        if (data.thread_id) setCurrentThreadId(data.thread_id);
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
-        setEvents((prev) => [...prev, { type: "error", content: err.message }]);
+        const errEv: StreamEvent = { type: "error", content: err.message };
+        setEvents((prev) => [...prev, errEv]);
+        setChatHistory((prev) => [...prev, { role: "assistant", content: `Error: ${err.message}` }]);
       }
     } finally {
       setLoading(false);
-      // Refresh runs list
+      // Refresh runs and threads
       if (token) {
         fetch(`${API_BASE}/agents/${agentId}/runs`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -191,8 +223,37 @@ function AgentRunContent() {
           .then((r) => r.json())
           .then(setRuns)
           .catch(() => {});
+        fetch(`${API_BASE}/agents/${agentId}/threads`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((r) => r.ok ? r.json() : [])
+          .then(setThreads)
+          .catch(() => {});
       }
     }
+  };
+
+  const startNewThread = () => {
+    setCurrentThreadId(crypto.randomUUID());
+    setChatHistory([]);
+    setEvents([]);
+    setFinalOutput("");
+    setFinalConfidence(null);
+  };
+
+  const loadThread = async (tid: string) => {
+    if (!token) return;
+    setCurrentThreadId(tid);
+    // Reconstruct chat from runs with this thread_id
+    const threadRuns = runs.filter((r) => r.thread_id === tid).sort((a, b) => a.id - b.id);
+    const history: { role: "user" | "assistant"; content: string }[] = [];
+    for (const r of threadRuns) {
+      history.push({ role: "user", content: r.input });
+      if (r.output) history.push({ role: "assistant", content: r.output });
+    }
+    setChatHistory(history);
+    setEvents([]);
+    setFinalOutput("");
   };
 
   const stopRun = () => {
@@ -279,24 +340,69 @@ function AgentRunContent() {
       </div>
 
       <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Run Agent</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+          <CardTitle>Conversation</CardTitle>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={startNewThread}>New Chat</Button>
+            {threads.length > 0 && (
+              <select
+                className="rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono"
+                value=""
+                onChange={(e) => e.target.value && loadThread(e.target.value)}
+              >
+                <option value="">Load previous thread…</option>
+                {threads.map((t) => (
+                  <option key={t.thread_id} value={t.thread_id}>
+                    {t.last_input} ({t.run_count})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="text-xs font-mono text-muted-foreground">
+            Thread: {currentThreadId.slice(0, 8)}…
+          </div>
+          <div className="max-h-[400px] overflow-auto space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+            {chatHistory.length === 0 && (
+              <p className="text-sm text-muted-foreground italic">Start a conversation. The agent will remember this thread.</p>
+            )}
+            {chatHistory.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background border border-border"
+                  }`}
+                >
+                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="rounded-2xl bg-background border border-border px-4 py-2 text-sm text-muted-foreground">
+                  Thinking…
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
           <Textarea
-            placeholder="Enter your message or task..."
+            placeholder="Message the agent… (Enter to send, Shift+Enter for newline)"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            rows={4}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (!loading && input.trim()) runAgent();
+              }
+            }}
+            rows={3}
           />
           <div className="flex gap-2 items-center">
-            <input
-              type="text"
-              placeholder="thread id (optional, for memory)"
-              value={threadId}
-              onChange={(e) => setThreadId(e.target.value)}
-              className="flex-1 rounded-lg border border-input bg-transparent px-3 py-1.5 font-mono text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            />
             <label className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
               <input type="checkbox" checked={streaming} onChange={(e) => setStreaming(e.target.checked)} />
               stream
@@ -304,7 +410,7 @@ function AgentRunContent() {
             {loading ? (
               <Button variant="destructive" onClick={stopRun}>Stop</Button>
             ) : (
-              <Button onClick={runAgent} disabled={!input}>Run</Button>
+              <Button onClick={runAgent} disabled={!input.trim()}>Send</Button>
             )}
           </div>
         </CardContent>
@@ -312,28 +418,20 @@ function AgentRunContent() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle className="font-mono text-sm text-muted-foreground">live output &amp; tool calls</CardTitle>
+          <CardTitle className="font-mono text-sm text-muted-foreground">live tool calls & events</CardTitle>
         </CardHeader>
         <CardContent>
           <div
             ref={outputRef}
-            className="min-h-[200px] max-h-[500px] overflow-auto rounded-lg border border-border bg-black/40 p-4 font-mono text-sm whitespace-pre-wrap"
+            className="min-h-[100px] max-h-[280px] overflow-auto rounded-lg border border-border bg-black/40 p-4 font-mono text-sm whitespace-pre-wrap"
           >
-            {events.length === 0 && !finalOutput && (
-              <p className="text-muted-foreground">$ waiting for input…</p>
+            {events.length === 0 && (
+              <p className="text-muted-foreground">$ tool calls and intermediate events appear here</p>
             )}
             {events.map(renderEvent)}
-            {finalOutput && (
-              <div className="mt-4 pt-4 border-t border-border">
-                <div className="mb-1 flex items-center gap-2 font-mono text-xs text-muted-foreground">
-                  final response:
-                  {finalConfidence != null && (
-                    <Badge variant="outline" className="font-mono">
-                      {(finalConfidence * 100).toFixed(0)}% confident
-                    </Badge>
-                  )}
-                </div>
-                <div className="whitespace-pre-wrap">{finalOutput}</div>
+            {finalConfidence != null && (
+              <div className="mt-3 text-xs text-muted-foreground">
+                Confidence: {(finalConfidence * 100).toFixed(0)}%
               </div>
             )}
           </div>

@@ -152,6 +152,7 @@ class AgentRunPublic(BaseModel):
     output_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
     estimated_cost_usd: Optional[float] = None
+    thread_id: Optional[str] = None  # multi-turn conversation thread
     created_at: datetime
     updated_at: datetime
 
@@ -168,6 +169,7 @@ class RunResponse(BaseModel):
     output: str
     agent_id: int
     run_id: Optional[int] = None
+    thread_id: Optional[str] = None  # returned so client can continue the conversation
     confidence: Optional[float] = None  # self-estimated completion confidence (0-1)
     latency_ms: Optional[int] = None
     steps_count: Optional[int] = None
