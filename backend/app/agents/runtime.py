@@ -1076,7 +1076,7 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
 async def _load_tools(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None) -> Optional[List[Any]]:
     """
     Assemble the tool belt: any pre-supplied tools + MCP tools + sandbox tools
-    (when the agent opts into sandbox execution).
+    (when the agent opts into sandbox execution) + MCP resource/prompt meta-tools.
     """
     if tools is not None:
         return tools
@@ -1086,6 +1086,9 @@ async def _load_tools(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
     mcp_config = agent_config.get("tools_config") or []
     if mcp_config:
         agent_tools.extend(await mcp_service.get_tools(mcp_config) or [])
+        # Add live MCP resource & prompt tools so agents can discover and read context
+        from app.agents.tools import build_mcp_meta_tools
+        agent_tools.extend(build_mcp_meta_tools(mcp_config))
 
     if agent_config.get("sandbox_enabled"):
         from app.agents.tools import build_sandbox_tools

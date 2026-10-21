@@ -5,14 +5,17 @@ and file operations on a per-run workspace.
 Every execution goes through SandboxService (Docker with resource limits and
 network isolation by default). File tools operate on the run's workspace only,
 with strict path traversal guards.
+
+Also includes dynamic MCP resource/prompt tools when MCP servers are configured.
 """
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from langchain_core.tools import tool
 
 from app.services.sandbox_service import SandboxUnavailableError, sandbox_service
+from app.services.mcp_service import mcp_service
 
 logger = logging.getLogger(__name__)
 
@@ -110,3 +113,52 @@ def build_sandbox_tools(workspace: str) -> List:
             return f"Error listing files: {e}"
 
     return [run_python, run_terminal, write_file, read_file, list_files]
+
+
+def build_mcp_meta_tools(tools_config: List[Dict[str, Any]]) -> List:
+    """
+    Build meta-tools that give the agent live access to MCP resources and prompts.
+    These create fresh sessions on each call for correctness.
+    """
+    if not tools_config:
+        return []
+
+    @tool
+    async def list_mcp_resources() -> str:
+        """List all available MCP resources from the configured servers (uri, name, description).
+        Call this first to discover what context or data the MCP servers expose."""
+        try:
+            resources = await mcp_service.discover_resources(tools_config)
+            if not resources:
+                return "No MCP resources discovered (or servers do not expose resources)."
+            lines = []
+            for r in resources:
+                lines.append(f"- {r.get('uri')} | {r.get('name')} | {r.get('description','')[:120]}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error listing MCP resources: {e}"
+
+    @tool
+    async def read_mcp_resource(uri: str) -> str:
+        """Read the content of a specific MCP resource by its URI (obtained from list_mcp_resources).
+        Returns the resource content or an error message."""
+        try:
+            result = await mcp_service.read_resource(tools_config, uri)
+            content = result.get("content", str(result))
+            return str(content)[:MAX_TEXT_CHARS]
+        except Exception as e:
+            return f"Error reading MCP resource {uri}: {e}"
+
+    @tool
+    async def list_mcp_prompts() -> str:
+        """List available MCP prompts from configured servers (name + description)."""
+        try:
+            prompts = await mcp_service.discover_prompts(tools_config)
+            if not prompts:
+                return "No MCP prompts discovered."
+            lines = [f"- {p.get('name')}: {p.get('description','')}" for p in prompts]
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error listing MCP prompts: {e}"
+
+    return [list_mcp_resources, read_mcp_resource, list_mcp_prompts]

@@ -242,6 +242,32 @@ async def discover_mcp_tools(
         raise HTTPException(status_code=400, detail=f"MCP discovery failed: {str(e)}")
 
 
+@router.post("/discover-resources")
+async def discover_mcp_resources(
+    tools_config: List[dict],
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Discover MCP resources available from the configured servers (for Agent Builder preview)."""
+    try:
+        resources = await mcp_service.discover_resources(tools_config)
+        return {"resources": resources, "count": len(resources)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"MCP resource discovery failed: {str(e)}")
+
+
+@router.post("/discover-prompts")
+async def discover_mcp_prompts(
+    tools_config: List[dict],
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Discover MCP prompts available from the configured servers."""
+    try:
+        prompts = await mcp_service.discover_prompts(tools_config)
+        return {"prompts": prompts, "count": len(prompts)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"MCP prompt discovery failed: {str(e)}")
+
+
 @router.post("/mcp/validate")
 async def validate_mcp_configs(
     tools_config: List[dict],

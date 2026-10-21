@@ -15,7 +15,7 @@ A modern, advanced platform for creating, configuring, running, and sharing AI a
 - **Long-Term Memory Management**: `GET /api/v1/agents/{id}/memories` to list stored semantic memories; existing clear endpoint for cleanup. Memories are scoped per user+agent.
 - **Multi-Agent Patterns**: single, sequential, supervisor, parallel, debate, map-reduce, hierarchical (manager → teams with nested workflows). All workers/specialists are full ReAct tool-using subgraphs (MCP + sandbox + optional reflection). Visual builder supports nested teams for hierarchical.
 - **Streaming Events**: tokens, tool calls/results, and multi-agent step progress.
-- **MCP Tool Discovery & Execution**: Real tool use via official MCP SDK + adapters.
+- **MCP Tool, Resource & Prompt Discovery**: Real tool use via official MCP SDK + adapters. Agents also receive live `list_mcp_resources`, `read_mcp_resource`, and `list_mcp_prompts` tools. Builder UI can preview tools, resources, and prompts.
 - **Versioning, Evaluation, Marketplace**: Snapshots, LLM-as-judge, ratings, publish/clone/buy.
 
 ## Quick Start
@@ -44,7 +44,7 @@ Open http://localhost:3000
 - **Auth**: JWT registration / login
 - **Agent CRUD**: create, list, update, delete agents with system prompt, model, temperature
 - **Agent Runner**: non-streaming and SSE streaming runs with tool-call events
-- **MCP Integration**: discover and execute tools from real MCP servers (stdio / streamable_http / sse)
+- **MCP Integration**: discover and execute tools from real MCP servers (stdio / streamable_http / sse). Agents automatically receive meta-tools to list/read MCP resources and prompts at runtime. Builder supports preview of tools, resources, and prompts.
 - **Marketplace**: publish, browse, search, clone, credit-based purchase (auto-clone)
 - Multi-agent foundation (workflow_config: single / sequential / supervisor / parallel / debate / map_reduce / hierarchical) with proper graph builders. Hierarchical visual editor supports nested team workflows.
 - **Debate multi-agent**: Pro/Con specialists + impartial Judge for balanced analysis

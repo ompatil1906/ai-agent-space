@@ -113,6 +113,10 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [loading, setLoading] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [discoveredTools, setDiscoveredTools] = useState<any[]>([]);
+  const [discoveringResources, setDiscoveringResources] = useState(false);
+  const [discoveredResources, setDiscoveredResources] = useState<any[]>([]);
+  const [discoveringPrompts, setDiscoveringPrompts] = useState(false);
+  const [discoveredPrompts, setDiscoveredPrompts] = useState<any[]>([]);
   const [validating, setValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<any>(null);
 
@@ -407,6 +411,54 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       setDiscoveredTools([{ name: "Error", description: String(e) }]);
     }
     setDiscovering(false);
+  };
+
+  const discoverResources = async () => {
+    setDiscoveringResources(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/agents/discover-resources`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+        body: JSON.stringify(tools),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDiscoveredResources(data.resources || []);
+      } else {
+        setDiscoveredResources([{ uri: "Error", name: await res.text() }]);
+      }
+    } catch (e) {
+      setDiscoveredResources([{ uri: "Error", name: String(e) }]);
+    }
+    setDiscoveringResources(false);
+  };
+
+  const discoverPrompts = async () => {
+    setDiscoveringPrompts(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/agents/discover-prompts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : "",
+        },
+        body: JSON.stringify(tools),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDiscoveredPrompts(data.prompts || []);
+      } else {
+        setDiscoveredPrompts([{ name: "Error", description: await res.text() }]);
+      }
+    } catch (e) {
+      setDiscoveredPrompts([{ name: "Error", description: String(e) }]);
+    }
+    setDiscoveringPrompts(false);
   };
 
   return (
@@ -742,6 +794,12 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <Button type="button" size="sm" variant="outline" onClick={discoverTools} disabled={discovering || tools.length === 0}>
                       {discovering ? "Discovering..." : "Preview Tools"}
                     </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={discoverResources} disabled={discoveringResources || tools.length === 0}>
+                      {discoveringResources ? "Discovering..." : "Preview Resources"}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={discoverPrompts} disabled={discoveringPrompts || tools.length === 0}>
+                      {discoveringPrompts ? "Discovering..." : "Preview Prompts"}
+                    </Button>
                     <Button type="button" size="sm" variant="outline" onClick={addTool}>
                       Add MCP Server
                     </Button>
@@ -775,6 +833,30 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                           {t.args_schema && (
                             <pre className="mt-1 text-[10px] opacity-70 overflow-auto max-h-16">{JSON.stringify(t.args_schema, null, 1)}</pre>
                           )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {discoveredResources.length > 0 && (
+                  <div className="mt-2 max-h-40 overflow-auto rounded-md bg-muted p-2 font-mono text-xs">
+                    <strong>Discovered Resources:</strong>
+                    <ul className="list-disc pl-4 space-y-1">
+                      {discoveredResources.map((r, idx) => (
+                        <li key={idx}>
+                          <span className="font-medium">{r.uri || r.name}</span>: {r.description || r.name}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {discoveredPrompts.length > 0 && (
+                  <div className="mt-2 max-h-40 overflow-auto rounded-md bg-muted p-2 font-mono text-xs">
+                    <strong>Discovered Prompts:</strong>
+                    <ul className="list-disc pl-4 space-y-1">
+                      {discoveredPrompts.map((p, idx) => (
+                        <li key={idx}>
+                          <span className="font-medium">{p.name}</span>: {p.description}
                         </li>
                       ))}
                     </ul>
