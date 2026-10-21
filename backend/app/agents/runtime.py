@@ -12,6 +12,7 @@ import operator
 import json
 import logging
 import time
+import asyncio
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
@@ -20,44 +21,76 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 from langgraph.prebuilt import ToolNode
 
-from app.core.config import settings
-from app.services.mcp_service import mcp_service
+from app.services.approval_service import (
+    create_approval_request,
+    wait_for_approval_db,
+    resolve_approval_in_db,
+)
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Human-in-the-Loop tool approval (in-memory, single-process)
+# Human-in-the-Loop tool approval (persistent, multi-process safe)
 # ---------------------------------------------------------------------------
+# In-memory futures are kept as a fast path for single-process, but the
+# source of truth is the database via approval_service.
+
 _approval_futures: Dict[str, asyncio.Future] = {}
 
-def request_tool_approval(tool_name: str, args: dict, thread_id: str) -> str:
-    """Create a pending approval future and return its request_id."""
+
+def request_tool_approval(
+    tool_name: str,
+    args: dict,
+    thread_id: str,
+    user_id: Optional[int] = None,
+    agent_id: Optional[int] = None,
+) -> str:
+    """Create a pending approval (DB + optional future) and return its request_id."""
     request_id = f"{thread_id}:{tool_name}:{int(time.time() * 1000)}"
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-    _approval_futures[request_id] = future
+    # Persist first
+    if user_id and agent_id:
+        create_approval_request(
+            request_id=request_id,
+            user_id=user_id,
+            agent_id=agent_id,
+            thread_id=thread_id,
+            tool_name=tool_name,
+            tool_args=args,
+        )
+    # Optional in-process future for low-latency single-worker
+    try:
+        loop = asyncio.get_event_loop()
+        future = loop.create_future()
+        _approval_futures[request_id] = future
+    except RuntimeError:
+        pass
     logger.info(f"Approval requested: {request_id} for {tool_name}")
     return request_id
 
+
 async def wait_for_approval(request_id: str, timeout: float = 300.0) -> bool:
+    """Wait for approval. Prefers in-process future, falls back to DB polling."""
     future = _approval_futures.get(request_id)
-    if not future:
-        return True
-    try:
-        return await asyncio.wait_for(future, timeout=timeout)
-    except asyncio.TimeoutError:
-        logger.warning(f"Approval timed out: {request_id}")
-        return False
-    finally:
-        _approval_futures.pop(request_id, None)
+    if future is not None:
+        try:
+            return await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.warning(f"In-process approval timed out: {request_id}")
+        finally:
+            _approval_futures.pop(request_id, None)
+    # Always also check / wait on DB (covers multi-process and restarts)
+    return await wait_for_approval_db(request_id, timeout=timeout)
+
 
 def resolve_approval(request_id: str, approved: bool) -> bool:
-    """Resolve a pending approval. Returns True if a future was found."""
+    """Resolve a pending approval in DB and any in-process future."""
+    db_ok = resolve_approval_in_db(request_id, approved)
     future = _approval_futures.get(request_id)
     if future and not future.done():
         future.set_result(approved)
+        _approval_futures.pop(request_id, None)
         return True
-    return False
+    return db_ok
 
 def _needs_approval(agent_config: Dict[str, Any], tool_name: str) -> bool:
     autonomy = (agent_config.get("autonomy_level") or "supervised").lower()
@@ -84,7 +117,11 @@ def wrap_tools_for_approval(tools: List[Any], agent_config: Dict[str, Any], thre
 
         async def make_approved_run(name=tool_name, orig_coro=original_coroutine, orig_func=original_func):
             async def approved_run(**kwargs):
-                request_id = request_tool_approval(name, kwargs, thread_id)
+                request_id = request_tool_approval(
+                    name, kwargs, thread_id,
+                    user_id=agent_config.get("user_id"),
+                    agent_id=agent_config.get("id"),
+                )
                 # Attach to the tool instance that will be in the list
                 # We set it on a shared holder that the stream loop can see
                 if not hasattr(wrap_tools_for_approval, "_pending"):
@@ -103,7 +140,11 @@ def wrap_tools_for_approval(tools: List[Any], agent_config: Dict[str, Any], thre
 
         # Build the tool with a stable closure
         async def approved_run(**kwargs):
-            request_id = request_tool_approval(tool_name, kwargs, thread_id)
+            request_id = request_tool_approval(
+                tool_name, kwargs, thread_id,
+                user_id=agent_config.get("user_id"),
+                agent_id=agent_config.get("id"),
+            )
             if not hasattr(wrap_tools_for_approval, "_pending"):
                 wrap_tools_for_approval._pending = {}
             wrap_tools_for_approval._pending[tool_name] = request_id

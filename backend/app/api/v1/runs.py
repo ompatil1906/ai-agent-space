@@ -11,7 +11,8 @@ from app.agents.runtime import run_agent, stream_agent, now_ms, resolve_approval
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_active_user
-from app.models import Agent, AgentRun, User, AgentEvaluation, CreditTransaction
+from app.models import Agent, AgentRun, User, AgentEvaluation, CreditTransaction, ToolApproval
+from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse, BatchEvaluateRequest, BatchEvaluateResponse, AgentEvaluationPublic, EvaluationSummary
 from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse, BatchEvaluateRequest, BatchEvaluateResponse, AgentEvaluationPublic, EvaluationSummary
 from app.services.sandbox_service import sandbox_service
 
@@ -514,11 +515,45 @@ class ApprovalRequest(BaseModel):
 async def resolve_tool_approval(
     body: ApprovalRequest,
     current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
 ):
     """Resolve a pending human-in-the-loop tool approval.
     Called by the frontend when the user approves or denies a tool call.
     """
+    # Verify ownership via the request_id record when possible
+    approval = db.query(ToolApproval).filter(ToolApproval.request_id == body.request_id).first()
+    if approval and approval.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to resolve this approval")
     success = resolve_approval(body.request_id, body.approved)
     if not success:
         raise HTTPException(status_code=404, detail="Approval request not found or already resolved")
     return {"status": "ok", "request_id": body.request_id, "approved": body.approved}
+
+
+@router.get("/approvals/pending")
+async def list_pending_approvals(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """List all pending tool approval requests for the current user.
+    Useful for reconnecting clients or a dedicated approvals inbox.
+    """
+    rows = (
+        db.query(ToolApproval)
+        .filter(ToolApproval.user_id == current_user.id, ToolApproval.status == "pending")
+        .order_by(ToolApproval.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    return [
+        {
+            "request_id": r.request_id,
+            "agent_id": r.agent_id,
+            "thread_id": r.thread_id,
+            "tool_name": r.tool_name,
+            "tool_args": r.tool_args,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+

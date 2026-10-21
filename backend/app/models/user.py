@@ -140,9 +140,28 @@ class AgentEvaluation(Base):
     user = relationship("User", back_populates="evaluations")
 
 
-class CreditTransaction(Base):
-    """Immutable credit ledger for marketplace sales/purchases and run metering."""
-    __tablename__ = "credit_transactions"
+class ToolApproval(Base):
+    """Persistent human-in-the-loop tool approval requests.
+    
+    Enables multi-process / restart-safe approvals. The runtime polls this table
+    while waiting; the API updates the status when the user decides.
+    """
+    __tablename__ = "tool_approvals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(String, unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False, index=True)
+    thread_id = Column(String, nullable=True, index=True)
+    tool_name = Column(String, nullable=False)
+    tool_args = Column(JSON, nullable=True)
+    status = Column(String, default="pending", nullable=False)  # pending | approved | denied | expired
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
+
+    user = relationship("User")
+    agent = relationship("Agent")
+
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)

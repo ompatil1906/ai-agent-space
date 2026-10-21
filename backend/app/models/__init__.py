@@ -7,6 +7,7 @@ from app.models.user import (
     AgentRating,
     AgentEvaluation,
     CreditTransaction,
+    ToolApproval,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "AgentRating",
     "AgentEvaluation",
     "CreditTransaction",
+    "ToolApproval",
 ]
