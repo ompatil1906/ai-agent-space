@@ -23,6 +23,9 @@ interface SubAgent {
   name: string;
   description: string;
   system_prompt: string;
+  // Nested support for hierarchical teams
+  team_workflow_type?: "single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce";
+  specialists?: SubAgent[];
 }
 
 interface AgentBuilderProps {
@@ -46,9 +49,23 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "hierarchical">(
     initial?.workflow_config?.type || "single"
   );
-  const [subAgents, setSubAgents] = useState<SubAgent[]>(
-    initial?.workflow_config?.sub_agents || initial?.workflow_config?.workers || []
-  );
+  const [subAgents, setSubAgents] = useState<SubAgent[]>(() => {
+    const wf = initial?.workflow_config || {};
+    if (wf.type === "hierarchical" && Array.isArray(wf.teams)) {
+      return wf.teams.map((t: any) => ({
+        name: String(t.name ?? "team"),
+        description: String(t.description ?? ""),
+        system_prompt: String(t.system_prompt ?? "You lead this team."),
+        team_workflow_type: (t.workflow?.type as any) || "supervisor",
+        specialists: (t.workflow?.sub_agents || t.workflow?.workers || []).map((s: any) => ({
+          name: String(s.name ?? "specialist"),
+          description: String(s.description ?? ""),
+          system_prompt: String(s.system_prompt ?? "You are a specialist."),
+        })),
+      }));
+    }
+    return wf.sub_agents || wf.workers || [];
+  });
   // Execution / autonomy controls
   const [maxSteps, setMaxSteps] = useState<number>(initial?.max_steps ?? 25);
   const [autonomyLevel, setAutonomyLevel] = useState<string>(initial?.autonomy_level || "supervised");
@@ -69,10 +86,29 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
 
   const buildWorkflowConfig = (): any => {
     const workflow_config: any = { type: workflowType };
-    if (workflowType !== "single") {
-      workflow_config.sub_agents = subAgents;
+    if (workflowType === "hierarchical") {
+      workflow_config.teams = subAgents.map((sa) => ({
+        name: sa.name,
+        description: sa.description,
+        system_prompt: sa.system_prompt,
+        workflow: {
+          type: sa.team_workflow_type || "supervisor",
+          sub_agents: (sa.specialists || []).map((sp) => ({
+            name: sp.name,
+            description: sp.description,
+            system_prompt: sp.system_prompt,
+          })),
+        },
+      }));
+    } else if (workflowType !== "single") {
+      const flat = subAgents.map(({ name, description, system_prompt }) => ({
+        name,
+        description,
+        system_prompt,
+      }));
+      workflow_config.sub_agents = flat;
       if (workflowType === "supervisor") {
-        workflow_config.workers = subAgents;
+        workflow_config.workers = flat;
       }
     }
     return workflow_config;
@@ -158,16 +194,32 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       setLongtermEnabled(mem.longterm?.enabled ?? false);
       setLongtermK(Number(mem.longterm?.k ?? 5));
       const wf = doc.workflow || {};
-      const type = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "hierarchical"];
-      if (wf.type && type.includes(wf.type)) setWorkflowType(wf.type);
-      const subs = wf.sub_agents || wf.workers || [];
-      setSubAgents(
-        subs.map((sa: any) => ({
-          name: String(sa.name ?? "agent"),
-          description: String(sa.description ?? ""),
-          system_prompt: String(sa.system_prompt ?? "You are a specialist."),
-        }))
-      );
+      const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "hierarchical"];
+      if (wf.type && types.includes(wf.type)) setWorkflowType(wf.type);
+      if (wf.type === "hierarchical" && Array.isArray(wf.teams)) {
+        setSubAgents(
+          wf.teams.map((t: any) => ({
+            name: String(t.name ?? "team"),
+            description: String(t.description ?? ""),
+            system_prompt: String(t.system_prompt ?? "You lead this team."),
+            team_workflow_type: (t.workflow?.type as any) || "supervisor",
+            specialists: (t.workflow?.sub_agents || t.workflow?.workers || []).map((s: any) => ({
+              name: String(s.name ?? "specialist"),
+              description: String(s.description ?? ""),
+              system_prompt: String(s.system_prompt ?? "You are a specialist."),
+            })),
+          }))
+        );
+      } else {
+        const subs = wf.sub_agents || wf.workers || [];
+        setSubAgents(
+          subs.map((sa: any) => ({
+            name: String(sa.name ?? "agent"),
+            description: String(sa.description ?? ""),
+            system_prompt: String(sa.system_prompt ?? "You are a specialist."),
+          }))
+        );
+      }
       const ex = doc.execution || {};
       setMaxSteps(Number(ex.max_steps ?? 25));
       setAutonomyLevel(ex.autonomy_level ?? "supervised");
@@ -208,10 +260,19 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   };
 
   const addSubAgent = () => {
-    setSubAgents([
-      ...subAgents,
-      { name: `specialist_${subAgents.length + 1}`, description: "Specialist agent", system_prompt: "You are a specialist." },
-    ]);
+    const base = {
+      name: workflowType === "hierarchical" ? `team_${subAgents.length + 1}` : `specialist_${subAgents.length + 1}`,
+      description: workflowType === "hierarchical" ? "Coordinates specialists" : "Specialist agent",
+      system_prompt: workflowType === "hierarchical" ? "You lead this team." : "You are a specialist.",
+    };
+    if (workflowType === "hierarchical") {
+      setSubAgents([
+        ...subAgents,
+        { ...base, team_workflow_type: "supervisor", specialists: [] },
+      ]);
+    } else {
+      setSubAgents([...subAgents, base]);
+    }
   };
 
   const updateSubAgent = (index: number, updates: Partial<SubAgent>) => {
@@ -220,8 +281,37 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
     setSubAgents(next);
   };
 
-  const removeSubAgent = (index: number) => {
-    setSubAgents(subAgents.filter((_, i) => i !== index));
+  const addSpecialist = (teamIndex: number) => {
+    const next = [...subAgents];
+    const team = next[teamIndex];
+    const specialists = team.specialists || [];
+    next[teamIndex] = {
+      ...team,
+      specialists: [
+        ...specialists,
+        { name: `specialist_${specialists.length + 1}`, description: "Specialist", system_prompt: "You are a specialist." },
+      ],
+    };
+    setSubAgents(next);
+  };
+
+  const updateSpecialist = (teamIndex: number, specIndex: number, updates: Partial<SubAgent>) => {
+    const next = [...subAgents];
+    const team = next[teamIndex];
+    const specialists = [...(team.specialists || [])];
+    specialists[specIndex] = { ...specialists[specIndex], ...updates };
+    next[teamIndex] = { ...team, specialists };
+    setSubAgents(next);
+  };
+
+  const removeSpecialist = (teamIndex: number, specIndex: number) => {
+    const next = [...subAgents];
+    const team = next[teamIndex];
+    next[teamIndex] = {
+      ...team,
+      specialists: (team.specialists || []).filter((_, i) => i !== specIndex),
+    };
+    setSubAgents(next);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -465,16 +555,16 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 <div className="space-y-4 rounded-lg border border-border p-4">
                   <div className="flex justify-between items-center">
                     <h3 className="font-mono text-sm text-muted-foreground uppercase">
-                      {workflowType === "map_reduce" ? "Mapper Specialists" : "Sub-Agents / Workers"}
+                      {workflowType === "hierarchical" ? "Teams (Manager → Teams)" : workflowType === "map_reduce" ? "Mapper Specialists" : "Sub-Agents / Workers"}
                     </h3>
                     <Button type="button" size="sm" variant="outline" onClick={addSubAgent}>
-                      Add Sub-Agent
+                      {workflowType === "hierarchical" ? "Add Team" : "Add Sub-Agent"}
                     </Button>
                   </div>
                   {subAgents.map((sa, i) => (
                     <div key={i} className="space-y-2 rounded-lg border border-border p-3">
                       <div className="flex justify-between">
-                        <Badge variant="secondary" className="font-mono">Sub-Agent {i + 1}</Badge>
+                        <Badge variant="secondary" className="font-mono">{workflowType === "hierarchical" ? `Team ${i + 1}` : `Sub-Agent ${i + 1}`}</Badge>
                         <Button type="button" size="sm" variant="ghost" onClick={() => removeSubAgent(i)}>
                           Remove
                         </Button>
@@ -495,6 +585,65 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                         onChange={(e) => updateSubAgent(i, { system_prompt: e.target.value })}
                         rows={3}
                       />
+                      {workflowType === "hierarchical" && (
+                        <div className="mt-3 space-y-3 rounded border border-dashed border-border p-3 bg-muted/30">
+                          <div className="flex items-center gap-2">
+                            <label className="font-mono text-xs text-muted-foreground uppercase whitespace-nowrap">Team Workflow</label>
+                            <Select
+                              value={sa.team_workflow_type || "supervisor"}
+                              onValueChange={(v: any) => updateSubAgent(i, { team_workflow_type: v })}
+                            >
+                              <SelectTrigger className="h-8 w-48">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="single">Single</SelectItem>
+                                <SelectItem value="sequential">Sequential</SelectItem>
+                                <SelectItem value="supervisor">Supervisor</SelectItem>
+                                <SelectItem value="parallel">Parallel</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="font-mono text-xs text-muted-foreground uppercase">Team Specialists</span>
+                            <Button type="button" size="sm" variant="outline" onClick={() => addSpecialist(i)}>
+                              Add Specialist
+                            </Button>
+                          </div>
+                          {(sa.specialists || []).map((sp, j) => (
+                            <div key={j} className="space-y-1 rounded border border-border/60 p-2 bg-background">
+                              <div className="flex justify-between items-center">
+                                <Badge variant="outline" className="text-xs font-mono">Specialist {j + 1}</Badge>
+                                <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={() => removeSpecialist(i, j)}>
+                                  ×
+                                </Button>
+                              </div>
+                              <Input
+                                placeholder="Name"
+                                className="h-8 text-sm"
+                                value={sp.name}
+                                onChange={(e) => updateSpecialist(i, j, { name: e.target.value })}
+                              />
+                              <Input
+                                placeholder="Description"
+                                className="h-8 text-sm"
+                                value={sp.description}
+                                onChange={(e) => updateSpecialist(i, j, { description: e.target.value })}
+                              />
+                              <Textarea
+                                placeholder="System Prompt"
+                                className="text-sm"
+                                value={sp.system_prompt}
+                                onChange={(e) => updateSpecialist(i, j, { system_prompt: e.target.value })}
+                                rows={2}
+                              />
+                            </div>
+                          ))}
+                          {(sa.specialists || []).length === 0 && (
+                            <p className="text-xs text-muted-foreground">No specialists yet — team will run as a single agent.</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -534,11 +683,16 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                   </div>
                 )}
                 {discoveredTools.length > 0 && (
-                  <div className="mt-2 max-h-32 overflow-auto rounded-md bg-muted p-2 font-mono text-xs">
+                  <div className="mt-2 max-h-48 overflow-auto rounded-md bg-muted p-2 font-mono text-xs">
                     <strong>Discovered Tools:</strong>
-                    <ul className="list-disc pl-4">
+                    <ul className="list-disc pl-4 space-y-1">
                       {discoveredTools.map((t, idx) => (
-                        <li key={idx}>{t.name}: {t.description}</li>
+                        <li key={idx}>
+                          <span className="font-medium">{t.name}</span>: {t.description}
+                          {t.args_schema && (
+                            <pre className="mt-1 text-[10px] opacity-70 overflow-auto max-h-16">{JSON.stringify(t.args_schema, null, 1)}</pre>
+                          )}
+                        </li>
                       ))}
                     </ul>
                   </div>

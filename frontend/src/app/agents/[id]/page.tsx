@@ -222,10 +222,11 @@ function AgentRunContent() {
     }
     if (ev.type === "agent_step") {
       return (
-        <div key={idx} className="my-1">
-          <Badge variant="outline" className="font-mono text-xs">
-            {ev.agent || "agent"}: {ev.content?.slice(0, 80)}...
-          </Badge>
+        <div key={idx} className="my-2 rounded-md border-l-2 border-purple-400/70 bg-purple-500/10 p-2.5 text-sm">
+          <div className="font-mono text-xs font-medium text-purple-300">
+            ▸ {ev.agent || "agent"}
+          </div>
+          <div className="mt-1 text-sm whitespace-pre-wrap text-muted-foreground">{ev.content}</div>
         </div>
       );
     }

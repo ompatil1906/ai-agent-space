@@ -9,7 +9,7 @@ A modern, advanced platform for creating, configuring, running, and sharing AI a
 - **Memory Windowing**: `memory_config.max_messages` trims conversation history before each LLM call (default 20).
 - **Long-Term Semantic Memory**: Optional vector-store memory (ChromaDB + embeddings). Set `memory_config.longterm_enabled=true` and `longterm_k` (default 5). Relevant past interactions are retrieved and injected into the system prompt. Interactions are automatically stored after each run.
 - **Long-Term Memory Management**: `GET /api/v1/agents/{id}/memories` to list stored semantic memories; existing clear endpoint for cleanup. Memories are scoped per user+agent.
-- **Multi-Agent Patterns**: single, sequential, supervisor, parallel, debate, map-reduce, hierarchical (manager → teams). All workers/specialists are full ReAct tool-using subgraphs (MCP + sandbox + optional reflection).
+- **Multi-Agent Patterns**: single, sequential, supervisor, parallel, debate, map-reduce, hierarchical (manager → teams with nested workflows). All workers/specialists are full ReAct tool-using subgraphs (MCP + sandbox + optional reflection). Visual builder supports nested teams for hierarchical.
 - **Streaming Events**: tokens, tool calls/results, and multi-agent step progress.
 - **MCP Tool Discovery & Execution**: Real tool use via official MCP SDK + adapters.
 - **Versioning, Evaluation, Marketplace**: Snapshots, LLM-as-judge, ratings, publish/clone/buy.
@@ -42,7 +42,7 @@ Open http://localhost:3000
 - **Agent Runner**: non-streaming and SSE streaming runs with tool-call events
 - **MCP Integration**: discover and execute tools from real MCP servers (stdio / streamable_http / sse)
 - **Marketplace**: publish, browse, search, clone, credit-based purchase (auto-clone)
-- Multi-agent foundation (workflow_config: single / sequential / supervisor / **parallel**) with proper graph builders
+- Multi-agent foundation (workflow_config: single / sequential / supervisor / parallel / debate / map_reduce / hierarchical) with proper graph builders. Hierarchical visual editor supports nested team workflows.
 - **Debate multi-agent**: Pro/Con specialists + impartial Judge for balanced analysis
 - **Batch Evaluation**: `POST /api/v1/agents/{id}/evaluate/batch` with list of inputs
 - Improved supervisor routing with stricter decision format for reliability
