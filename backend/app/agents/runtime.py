@@ -13,7 +13,7 @@ import json
 import logging
 import time
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
@@ -199,6 +199,92 @@ def store_interaction_memory(
         logger.debug("Failed to store long-term memory: %s", e)
 
 
+
+def _get_structured_config(agent_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract structured output settings from advanced_config."""
+    adv = agent_config.get("advanced_config") or {}
+    return {
+        "enabled": bool(adv.get("structured_output_enabled")),
+        "schema": adv.get("output_schema"),
+        "tool_choice": adv.get("tool_choice", "auto"),
+        "max_tool_retries": int(adv.get("max_tool_retries", 1)),
+    }
+
+
+def _make_reliable_tool_node(tools: List[Any], max_retries: int = 1):
+    """ToolNode wrapper that catches errors and returns them as ToolMessages so the LLM can recover."""
+    base_tool_node = ToolNode(tools)
+
+    def reliable_tools(state: AgentState):
+        try:
+            result = base_tool_node.invoke(state)
+            return result
+        except Exception as e:
+            logger.warning("Tool execution failed: %s", e)
+            # Build error ToolMessages for any pending tool calls
+            last = state["messages"][-1] if state.get("messages") else None
+            tool_calls = getattr(last, "tool_calls", None) or []
+            error_msgs = []
+            for tc in tool_calls:
+                error_msgs.append(
+                    ToolMessage(
+                        content=f"Tool error (retryable): {type(e).__name__}: {str(e)[:500]}. Please try a different approach or fix the inputs.",
+                        tool_call_id=tc.get("id") or tc.get("tool_call_id") or "unknown",
+                    )
+                )
+            if not error_msgs:
+                error_msgs = [AIMessage(content=f"[Tool execution error: {e}]")]
+            return {"messages": error_msgs}
+
+    return reliable_tools
+
+
+def _make_structured_finalizer(agent_config: Dict[str, Any], base_llm):
+    """Final node that enforces JSON Schema structured output on the agent's answer."""
+    struct_cfg = _get_structured_config(agent_config)
+    schema = struct_cfg["schema"]
+
+    def finalize(state: AgentState):
+        if not struct_cfg["enabled"] or not schema:
+            return {}
+        try:
+            structured_llm = base_llm.with_structured_output(schema, method="json_schema")
+            # Use conversation history for extraction
+            messages = state.get("messages", [])
+            # Prefer last AI message content as candidate
+            last_ai = None
+            for m in reversed(messages):
+                if isinstance(m, AIMessage) and m.content:
+                    last_ai = m.content
+                    break
+            extract_prompt = (
+                "Extract or generate a final answer that strictly conforms to the provided JSON schema. "
+                "Use the conversation history. Output ONLY valid structured data."
+            )
+            if last_ai:
+                extract_prompt += f"\n\nPrevious draft answer:\n{last_ai[:4000]}"
+            response = structured_llm.invoke(
+                [SystemMessage(content=extract_prompt)] + messages[-12:]
+            )
+            # response is usually a dict when using with_structured_output
+            content = json.dumps(response) if isinstance(response, dict) else str(response)
+            final_msg = AIMessage(
+                content=content,
+                additional_kwargs={"structured": True, "schema_enforced": True, "agent": agent_config.get("name", "agent")},
+            )
+            return {"messages": [final_msg]}
+        except Exception as e:
+            logger.warning("Structured output finalization failed: %s", e)
+            # Fall back gracefully
+            fallback = AIMessage(
+                content=f"[Structured output failed: {e}. Raw conversation continues.]",
+                additional_kwargs={"structured": False, "error": str(e)},
+            )
+            return {"messages": [fallback]}
+
+    return finalize
+
+
 def _build_node_call_model(llm, agent_config, fallback_prompt: str, node_label: str):
     """Standard model-calling node used across graph builders."""
     def call_model(state: AgentState):
@@ -217,41 +303,70 @@ def _build_node_call_model(llm, agent_config, fallback_prompt: str, node_label: 
 
 
 def build_single_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
-    """ReAct agent with optional tools and an optional Reflexion self-check loop."""
+    """ReAct agent with optional tools, reflection, and structured output finalization."""
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
     system_prompt = agent_config.get("system_prompt", "You are a helpful AI assistant.")
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
 
-    llm = get_llm(model_name, temperature, base_url)
+    base_llm = get_llm(model_name, temperature, base_url)
+    struct_cfg = _get_structured_config(agent_config)
+    llm = base_llm
     if tools:
-        llm = llm.bind_tools(tools)
+        tool_choice = struct_cfg.get("tool_choice", "auto")
+        if tool_choice == "required":
+            llm = base_llm.bind_tools(tools, tool_choice="required")
+        elif tool_choice == "none":
+            llm = base_llm  # no tools
+        else:
+            llm = base_llm.bind_tools(tools)
 
     workflow = StateGraph(AgentState)
     workflow.add_node("agent", _build_node_call_model(llm, agent_config, system_prompt, "agent"))
     workflow.set_entry_point("agent")
 
     reflect_cfg = _reflection_config(agent_config)
+    has_struct = struct_cfg["enabled"] and struct_cfg["schema"]
 
-    if tools:
-        tool_node = ToolNode(tools)
+    # Structured finalizer node (runs once at the end)
+    if has_struct:
+        workflow.add_node("finalize", _make_structured_finalizer(agent_config, base_llm))
+
+    if tools and struct_cfg.get("tool_choice") != "none":
+        tool_node = _make_reliable_tool_node(tools, struct_cfg["max_tool_retries"])
         workflow.add_node("tools", tool_node)
+
+        def route_after_agent(state: AgentState):
+            last = state["messages"][-1] if state.get("messages") else None
+            if last and getattr(last, "tool_calls", None):
+                return "tools"
+            return "finalize" if has_struct else "agent_done"
+
         if reflect_cfg["enabled"] and reflect_cfg["max_rounds"] > 0:
             workflow.add_conditional_edges(
                 "agent",
-                _should_continue,
-                {"tools": "tools", "agent_done": "reflect"},
+                route_after_agent,
+                {"tools": "tools", "finalize": "finalize", "agent_done": "reflect"},
             )
             workflow.add_node("reflect", _make_reflect_node(agent_config, reflect_cfg["max_rounds"]))
             workflow.add_edge("reflect", "agent")
         else:
-            workflow.add_conditional_edges("agent", _should_continue, {"tools": "tools", "agent_done": END})
+            workflow.add_conditional_edges(
+                "agent",
+                route_after_agent,
+                {"tools": "tools", "finalize": "finalize", "agent_done": END},
+            )
         workflow.add_edge("tools", "agent")
+        if has_struct:
+            workflow.add_edge("finalize", END)
     else:
         if reflect_cfg["enabled"] and reflect_cfg["max_rounds"] > 0:
-            workflow.add_conditional_edges("agent", _should_continue, {"tools": "tools", "agent_done": "reflect"})
+            workflow.add_conditional_edges("agent", lambda s: "reflect", {"reflect": "reflect"})
             workflow.add_node("reflect", _make_reflect_node(agent_config, reflect_cfg["max_rounds"]))
             workflow.add_edge("reflect", "agent")
+        elif has_struct:
+            workflow.add_edge("agent", "finalize")
+            workflow.add_edge("finalize", END)
         else:
             workflow.add_edge("agent", END)
 
@@ -275,8 +390,13 @@ def build_worker_subgraph(
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
 
     llm = get_llm(model_name, temperature, base_url)
+    struct_cfg = _get_structured_config(agent_config)
     if tools:
-        llm = llm.bind_tools(tools)
+        tool_choice = struct_cfg.get("tool_choice", "auto")
+        if tool_choice == "required":
+            llm = llm.bind_tools(tools, tool_choice="required")
+        elif tool_choice != "none":
+            llm = llm.bind_tools(tools)
 
     # Temporarily override system prompt for this worker while reusing helpers
     worker_config = {**agent_config, "system_prompt": system_prompt}
@@ -287,8 +407,8 @@ def build_worker_subgraph(
 
     reflect_cfg = _reflection_config(worker_config)
 
-    if tools:
-        tool_node = ToolNode(tools)
+    if tools and struct_cfg.get("tool_choice") != "none":
+        tool_node = _make_reliable_tool_node(tools, struct_cfg["max_tool_retries"])
         workflow.add_node("tools", tool_node)
         if reflect_cfg["enabled"] and reflect_cfg["max_rounds"] > 0:
             workflow.add_conditional_edges(

@@ -53,6 +53,12 @@ class AdvancedConfig(BaseModel):
     planning_enabled: bool = False  # inject long-horizon plan-then-act directive
     reflection_enabled: bool = False  # Reflexion-style self-check before finishing
     max_reflections: int = Field(default=2, ge=0, le=3)
+    # Structured outputs (JSON Schema enforced final answer)
+    structured_output_enabled: bool = False
+    output_schema: Optional[Dict[str, Any]] = None
+    # Function calling reliability
+    tool_choice: str = Field(default="auto")  # auto | required | none
+    max_tool_retries: int = Field(default=1, ge=0, le=3)
 
 
 # Agent schemas

@@ -73,6 +73,12 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [planningEnabled, setPlanningEnabled] = useState<boolean>(initial?.advanced_config?.planning_enabled ?? false);
   const [reflectEnabled, setReflectEnabled] = useState<boolean>(initial?.advanced_config?.reflection_enabled ?? false);
   const [maxReflections, setMaxReflections] = useState<number>(initial?.advanced_config?.max_reflections ?? 2);
+  const [structuredEnabled, setStructuredEnabled] = useState<boolean>(initial?.advanced_config?.structured_output_enabled ?? false);
+  const [outputSchemaText, setOutputSchemaText] = useState<string>(
+    initial?.advanced_config?.output_schema ? JSON.stringify(initial.advanced_config.output_schema, null, 2) : '{\n  "type": "object",\n  "properties": {\n    "answer": { "type": "string" },\n    "confidence": { "type": "number" }\n  },\n  "required": ["answer"]\n}'
+  );
+  const [toolChoice, setToolChoice] = useState<string>(initial?.advanced_config?.tool_choice ?? "auto");
+
   // YAML editor
   const [editorMode, setEditorMode] = useState<"visual" | "yaml">("visual");
   const [yamlText, setYamlText] = useState<string>("");
@@ -172,6 +178,9 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
           planning_enabled: planningEnabled,
           reflection_enabled: reflectEnabled,
           max_reflections: maxReflections,
+          structured_output_enabled: structuredEnabled,
+          output_schema: (() => { try { return JSON.parse(outputSchemaText || "{}"); } catch { return null; } })(),
+          tool_choice: toolChoice,
         },
         tools: serializeTools(),
       },
@@ -479,6 +488,32 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <input type="checkbox" checked={reflectEnabled} onChange={(e) => setReflectEnabled(e.target.checked)} />
                     <span className="font-mono text-xs">self-reflection with confidence + escalation</span>
                   </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={structuredEnabled} onChange={(e) => setStructuredEnabled(e.target.checked)} />
+                    <span className="font-mono text-xs">structured output (JSON Schema enforced)</span>
+                  </label>
+                  {structuredEnabled && (
+                    <div className="ml-6 space-y-1">
+                      <span className="text-xs text-muted-foreground">Output JSON Schema:</span>
+                      <textarea
+                        className="w-full h-32 text-xs font-mono border rounded p-2 bg-background"
+                        value={outputSchemaText}
+                        onChange={(e) => setOutputSchemaText(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-mono text-xs">tool_choice:</span>
+                    <select
+                      className="text-xs border rounded px-1 py-0.5 bg-background"
+                      value={toolChoice}
+                      onChange={(e) => setToolChoice(e.target.value)}
+                    >
+                      <option value="auto">auto</option>
+                      <option value="required">required</option>
+                      <option value="none">none</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 

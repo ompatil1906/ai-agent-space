@@ -1,4 +1,4 @@
-# AI Agent Space
+- **Structured Outputs & Reliable Function Calling**: Optional JSON Schema enforcement on final answers via `advanced_config.structured_output_enabled` + `output_schema`. Tool errors are caught and returned to the LLM for recovery. `tool_choice` (auto/required/none) supported.\n# AI Agent Space
 
 A modern, advanced platform for creating, configuring, running, and sharing AI agents with real tool use (MCP), streaming, memory, and multi-agent workflows.
 
@@ -82,7 +82,7 @@ Open http://localhost:3000
 4. ~~Richer parallel patterns (map-reduce, debate)~~ (Done: debate + map-reduce)
 5. ~~Conversation history UI improvements + deeper tool-call visualization~~ (Done: persisted event stream in runs + rich live + history dialog with tool activity)
 6. ~~Evaluation results persistence + dashboard charts~~ (Done: AgentEvaluation model, summary endpoint, dashboard with trend bars)
-7. Structured outputs / function calling reliability improvements
+7. ~~Structured outputs / function calling reliability improvements~~ (Done: JSON Schema finalizer + reliable tool error recovery + tool_choice)
 8. ~~True parallel map-reduce with LangGraph Send API~~ (Done: Send-based concurrent fan-out + reducer)
 9. ~~Advanced memory (vector store / long-term)~~ (Done: ChromaDB semantic memory with retrieval + auto-store)
 
