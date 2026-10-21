@@ -71,6 +71,10 @@ class AgentRun(Base):
     # --- Observability metrics ---
     latency_ms = Column(Integer, nullable=True)  # wall-clock duration of the run
     steps_count = Column(Integer, nullable=True)  # tool calls + agent steps observed in the trace
+    input_tokens = Column(Integer, nullable=True, default=0)
+    output_tokens = Column(Integer, nullable=True, default=0)
+    total_tokens = Column(Integer, nullable=True, default=0)
+    estimated_cost_usd = Column(Float, nullable=True, default=0.0)  # rough estimate based on model pricing
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

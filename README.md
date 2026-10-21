@@ -1,4 +1,5 @@
-- **Structured Outputs & Reliable Function Calling**: Optional JSON Schema enforcement on final answers via `advanced_config.structured_output_enabled` + `output_schema`. Tool errors are caught and returned to the LLM for recovery. `tool_choice` (auto/required/none) supported.\n# AI Agent Space
+- **Structured Outputs & Reliable Function Calling**: Optional JSON Schema enforcement on final answers via `advanced_config.structured_output_enabled` + `output_schema`. Tool errors are caught and returned to the LLM for recovery. `tool_choice` (auto/required/none) supported.
+- **Token Usage & Cost Tracking**: Every agent run (streaming and non-streaming) records `input_tokens`, `output_tokens`, `total_tokens`, and an estimated USD cost based on model pricing. Available on the run record, streaming `done` event, and user dashboard recent runs.\n# AI Agent Space
 
 A modern, advanced platform for creating, configuring, running, and sharing AI agents with real tool use (MCP), streaming, memory, and multi-agent workflows.
 

@@ -963,6 +963,44 @@ async def _load_tools(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
     return agent_tools or None
 
 
+def _extract_usage(event: Dict[str, Any]) -> Dict[str, int]:
+    """Extract token usage from a LangChain chat model event when available."""
+    data = event.get("data", {}) or {}
+    # Newer LangChain puts usage on the output AIMessage or in response_metadata
+    output = data.get("output")
+    usage = {}
+    if isinstance(output, AIMessage):
+        meta = getattr(output, "response_metadata", {}) or {}
+        usage = meta.get("token_usage") or meta.get("usage") or {}
+    if not usage:
+        # Fallback for some streaming end events
+        usage = data.get("usage") or data.get("token_usage") or {}
+    return {
+        "input_tokens": int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0),
+        "output_tokens": int(usage.get("completion_tokens") or usage.get("output_tokens") or 0),
+        "total_tokens": int(usage.get("total_tokens") or 0),
+    }
+
+
+def _estimate_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
+    """Rough USD cost estimate. Update pricing as needed; defaults to gpt-4o-mini rates."""
+    # Approximate prices per 1M tokens (input / output) as of late 2025/2026
+    pricing = {
+        "gpt-4o": (2.50, 10.00),
+        "gpt-4o-mini": (0.15, 0.60),
+        "gpt-4.1": (2.00, 8.00),
+        "gpt-4.1-mini": (0.40, 1.60),
+        "o1": (15.00, 60.00),
+        "o1-mini": (3.00, 12.00),
+        "claude-3-5-sonnet": (3.00, 15.00),
+        "claude-3-5-haiku": (0.80, 4.00),
+    }
+    # Normalize model name
+    key = (model_name or "").lower().split("/")[-1]
+    in_price, out_price = pricing.get(key, (0.15, 0.60))  # default mini
+    return round((input_tokens * in_price + output_tokens * out_price) / 1_000_000, 6)
+
+
 async def run_agent(
     agent_config: Dict[str, Any],
     user_input: str,
@@ -980,14 +1018,48 @@ async def run_agent(
         "recursion_limit": max(10, int(agent_config.get("max_steps") or 25)),
     }
     initial_state: AgentState = {"messages": [HumanMessage(content=user_input)], "attempts": 0}
-    result = await graph.ainvoke(initial_state, config=config)
-    last_message = result["messages"][-1]
-    output = last_message.content if hasattr(last_message, "content") else str(last_message)
+
+    # Use streaming events internally so we can capture token usage consistently
+    full_output = ""
+    input_tokens = 0
+    output_tokens = 0
+    total_tokens = 0
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    confidence = 0.0
+    escalated = False
+
+    async for event in graph.astream_events(initial_state, config=config, version="v2"):
+        kind = event.get("event")
+        if kind == "on_chat_model_end":
+            usage = _extract_usage(event)
+            input_tokens += usage["input_tokens"]
+            output_tokens += usage["output_tokens"]
+            total_tokens += usage["total_tokens"] or (usage["input_tokens"] + usage["output_tokens"])
+        elif kind == "on_chain_end" and event.get("name") == "reflect":
+            out = event.get("data", {}).get("output", {}) or {}
+            confidence = float(out.get("confidence", confidence) or 0.0)
+            escalated = bool(out.get("escalated", escalated))
+
+    # Final state
+    result = await graph.aget_state(config)
+    messages = result.values.get("messages", []) if result else []
+    last_message = messages[-1] if messages else None
+    output = getattr(last_message, "content", "") if last_message else ""
+    if not output:
+        output = full_output
+
     store_interaction_memory(agent_config, user_input, output)
+    cost = _estimate_cost(model_name, input_tokens, output_tokens)
     return {
         "output": output,
-        "confidence": float(result.get("confidence", 0.0) or 0.0),
-        "escalated": bool(result.get("escalated", False)),
+        "confidence": confidence,
+        "escalated": escalated,
+        "usage": {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens or (input_tokens + output_tokens),
+            "estimated_cost_usd": cost,
+        },
     }
 
 
@@ -1018,6 +1090,11 @@ async def stream_agent(
         initial_state: AgentState = {"messages": [HumanMessage(content=user_input)], "attempts": 0}
 
         full_output = ""
+        input_tokens = 0
+        output_tokens = 0
+        total_tokens = 0
+        model_name = agent_config.get("model_name", "gpt-4o-mini")
+
         async for event in graph.astream_events(initial_state, config=config, version="v2"):
             kind = event.get("event")
             name = event.get("name", "")
@@ -1028,6 +1105,12 @@ async def stream_agent(
                     token = chunk.content
                     full_output += token
                     yield {"type": "token", "content": token}
+
+            elif kind == "on_chat_model_end":
+                usage = _extract_usage(event)
+                input_tokens += usage["input_tokens"]
+                output_tokens += usage["output_tokens"]
+                total_tokens += usage["total_tokens"] or (usage["input_tokens"] + usage["output_tokens"])
 
             elif kind == "on_chain_start":
                 # Emit step start for multi-agent nodes (skip internal)
@@ -1088,7 +1171,17 @@ async def stream_agent(
                         }
 
         store_interaction_memory(agent_config, user_input, full_output)
-        yield {"type": "done", "content": full_output}
+        cost = _estimate_cost(model_name, input_tokens, output_tokens)
+        yield {
+            "type": "done",
+            "content": full_output,
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens or (input_tokens + output_tokens),
+                "estimated_cost_usd": cost,
+            },
+        }
 
     except Exception as e:
         yield {"type": "error", "content": str(e)}

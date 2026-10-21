@@ -88,9 +88,14 @@ async def run_agent_endpoint(
             request.input,
             thread_id=request.thread_id or str(run.id),
         )
+        usage = result.get("usage") or {}
         run.output = result["output"]
         run.status = "completed"
         run.latency_ms = now_ms() - started_ms
+        run.input_tokens = usage.get("input_tokens", 0)
+        run.output_tokens = usage.get("output_tokens", 0)
+        run.total_tokens = usage.get("total_tokens", 0)
+        run.estimated_cost_usd = usage.get("estimated_cost_usd", 0.0)
         db.commit()
         return RunResponse(
             output=result["output"],
@@ -98,6 +103,8 @@ async def run_agent_endpoint(
             run_id=run.id,
             confidence=result.get("confidence"),
             latency_ms=run.latency_ms,
+            usage=usage,
+        )
         )
     except Exception as e:
         run.status = "error"
@@ -197,10 +204,15 @@ async def stream_agent_endpoint(
                         }),
                     }
                 elif etype == "done":
+                    usage = event.get("usage") or {}
                     run.output = event["content"] or full_output
                     run.messages = collected_events  # persist full event stream for history visualization
                     run.steps_count = tool_calls
                     run.latency_ms = now_ms() - started_ms
+                    run.input_tokens = usage.get("input_tokens", 0)
+                    run.output_tokens = usage.get("output_tokens", 0)
+                    run.total_tokens = usage.get("total_tokens", 0)
+                    run.estimated_cost_usd = usage.get("estimated_cost_usd", 0.0)
                     run.status = "completed"
                     db.commit()
                     yield {
@@ -213,6 +225,7 @@ async def stream_agent_endpoint(
                             ),
                             "latency_ms": run.latency_ms,
                             "steps_count": tool_calls,
+                            "usage": usage,
                         }),
                     }
                 elif etype == "error":

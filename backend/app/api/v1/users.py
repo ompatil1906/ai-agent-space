@@ -114,6 +114,8 @@ def get_user_stats(
                 "status": r.status,
                 "latency_ms": r.latency_ms,
                 "steps_count": r.steps_count,
+                "total_tokens": r.total_tokens,
+                "estimated_cost_usd": r.estimated_cost_usd,
                 "created_at": r.created_at,
             }
             for r in recent_runs

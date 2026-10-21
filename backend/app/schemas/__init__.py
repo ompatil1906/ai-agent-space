@@ -148,6 +148,10 @@ class AgentRunPublic(BaseModel):
     error: Optional[str] = None
     latency_ms: Optional[int] = None
     steps_count: Optional[int] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    estimated_cost_usd: Optional[float] = None
     created_at: datetime
     updated_at: datetime
 
@@ -167,6 +171,7 @@ class RunResponse(BaseModel):
     confidence: Optional[float] = None  # self-estimated completion confidence (0-1)
     latency_ms: Optional[int] = None
     steps_count: Optional[int] = None
+    usage: Optional[Dict[str, Any]] = None  # input_tokens, output_tokens, total_tokens, estimated_cost_usd
 
 
 class EvaluateRequest(BaseModel):
@@ -301,6 +306,8 @@ class RecentRunItem(BaseModel):
     status: str
     latency_ms: Optional[int] = None
     steps_count: Optional[int] = None
+    total_tokens: Optional[int] = None
+    estimated_cost_usd: Optional[float] = None
     created_at: datetime
 
 
