@@ -1209,6 +1209,7 @@ async def stream_agent(
     """
     Streaming generator that yields structured events:
     - {"type": "token", "content": "..."}
+    - {"type": "thought", "content": "...", "agent": "..."}
     - {"type": "tool_call", "name": "...", "args": {...}}
     - {"type": "tool_result", "name": "...", "content": "..."}
     - {"type": "agent_step", "agent": "...", "content": "..."}
@@ -1245,6 +1246,13 @@ async def stream_agent(
                     token = chunk.content
                     full_output += token
                     yield {"type": "token", "content": token}
+                    # Detect planning thoughts for advanced observability
+                    if "Plan:" in token or "Thought:" in token or "Reasoning:" in token:
+                        yield {
+                            "type": "thought",
+                            "content": token.strip(),
+                            "agent": name or "agent",
+                        }
 
             elif kind == "on_chat_model_end":
                 usage = _extract_usage(event)

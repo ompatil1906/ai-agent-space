@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { API_BASE } from "@/lib/api";
 
 interface StreamEvent {
-  type: "token" | "tool_call" | "tool_result" | "agent_step" | "reflection" | "confidence" | "done" | "error" | "approval_required";
+  type: "token" | "tool_call" | "tool_result" | "agent_step" | "reflection" | "confidence" | "done" | "error" | "approval_required" | "thought";
   content?: string;
   name?: string;
   agent?: string;
@@ -326,6 +326,16 @@ function AgentRunContent() {
         <div key={idx} className="my-2 rounded-md border-l-2 border-emerald-400/70 bg-emerald-500/10 p-2.5 text-sm">
           <div className="font-mono text-xs font-medium text-emerald-300">✓ tool_result · {ev.name}</div>
           <pre className="text-xs mt-1.5 overflow-auto max-h-40 whitespace-pre-wrap text-muted-foreground">{ev.content}</pre>
+        </div>
+      );
+    }
+    if (ev.type === "thought") {
+      return (
+        <div key={idx} className="my-2 rounded-md border-l-2 border-amber-400/70 bg-amber-500/5 p-2.5 text-sm italic">
+          <div className="font-mono text-xs font-medium text-amber-300">
+            💭 thought · {ev.agent || "agent"}
+          </div>
+          <div className="mt-1 text-sm whitespace-pre-wrap text-muted-foreground">{ev.content}</div>
         </div>
       );
     }
