@@ -53,7 +53,7 @@ Open http://localhost:3000
 - **MCP Tool Preview**: Discover and preview available tools from MCP configs directly in the Agent Builder UI
 - **Marketplace Ratings**: Rate published agents (1-5 + review), list ratings, average score
 - Frontend: Login, Register, Agents (with publish/clone), Marketplace page, Agent runner with streaming
-- **Versioning**: auto-snapshots on create/update, list, restore, manual snapshot
+- **Versioning**: auto-snapshots on create/update, list, restore, manual snapshot. Dedicated UI at `/agents/[id]/versions` for history, details, and restore.
 - **Evaluation Harness**: LLM-as-judge scoring endpoint (`POST /api/v1/agents/{id}/evaluate`)
 - **Memory**: Thread-based conversation memory via LangGraph checkpointer (MemorySaver; PostgresSaver when DATABASE_URL is PostgreSQL)
 

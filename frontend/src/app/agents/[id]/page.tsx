@@ -379,11 +379,22 @@ function AgentRunContent() {
         </p>
         <h1 className="mt-1 text-3xl font-medium tracking-tight">{agent?.name || "Agent"}</h1>
         <p className="mt-1 text-muted-foreground">{agent?.description}</p>
-        <div className="flex gap-2 mt-3">
+        <div className="flex gap-2 mt-3 flex-wrap">
           <Badge variant="secondary" className="font-mono">{agent?.model_name}</Badge>
           {agent?.workflow_config?.type && agent.workflow_config.type !== "single" && (
             <Badge variant="outline" className="font-mono">{agent.workflow_config.type} multi-agent</Badge>
           )}
+        </div>
+        <div className="flex gap-2 mt-4">
+          <Button variant="outline" size="sm" asChild>
+            <a href={`/agents/${agentId}/versions`}>Versions</a>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <a href={`/agents/${agentId}/evaluations`}>Evaluations</a>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <a href={`/agents`}>All Agents</a>
+          </Button>
         </div>
       </div>
 
