@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { API_BASE } from "@/lib/api";
 
 interface StreamEvent {
-  type: "token" | "tool_call" | "tool_result" | "agent_step" | "reflection" | "confidence" | "done" | "error";
+  type: "token" | "tool_call" | "tool_result" | "agent_step" | "reflection" | "confidence" | "done" | "error" | "approval_required";
   content?: string;
   name?: string;
   agent?: string;
@@ -20,6 +20,7 @@ interface StreamEvent {
   confidence?: number;
   escalated?: boolean;
   output?: string;
+  request_id?: string;
 }
 
 function AgentRunContent() {
@@ -40,6 +41,7 @@ function AgentRunContent() {
   const [finalConfidence, setFinalConfidence] = useState<number | null>(null);
   const [runs, setRuns] = useState<any[]>([]);
   const [selectedRun, setSelectedRun] = useState<any>(null);
+  const [pendingApprovals, setPendingApprovals] = useState<Record<string, {name: string; args: any}>>({});
   const abortControllerRef = useRef<AbortController | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -153,6 +155,12 @@ function AgentRunContent() {
                 if (parsed.type) {
                   turnEvents.push(parsed);
                   setEvents((prev) => [...prev, parsed]);
+                  if (parsed.type === "approval_required" && parsed.request_id) {
+                    setPendingApprovals((prev) => ({
+                      ...prev,
+                      [parsed.request_id]: { name: parsed.name || "tool", args: parsed.args || {} },
+                    }));
+                  }
                   if (parsed.type === "token") assistantContent += parsed.content || "";
                   if (parsed.type === "done") {
                     setFinalOutput(parsed.content || assistantContent);
@@ -261,9 +269,49 @@ function AgentRunContent() {
     setLoading(false);
   };
 
+
+  const resolveApproval = async (requestId: string, approved: boolean) => {
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`${API_BASE}/agents/approval`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ request_id: requestId, approved }),
+      });
+      if (res.ok) {
+        setPendingApprovals((prev) => {
+          const next = { ...prev };
+          delete next[requestId];
+          return next;
+        });
+      } else {
+        console.error("Approval failed", await res.text());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const renderEvent = (ev: StreamEvent, idx: number) => {
     if (ev.type === "token") {
       return <span key={idx}>{ev.content}</span>;
+    }
+    if (ev.type === "approval_required" && ev.request_id && pendingApprovals[ev.request_id]) {
+      return (
+        <div key={idx} className="my-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
+          <div className="font-mono text-xs font-medium text-amber-300 mb-2">
+            ⚠ Approval required · {ev.name}
+          </div>
+          <pre className="text-xs mb-3 overflow-auto max-h-24 text-muted-foreground">{JSON.stringify(ev.args, null, 2)}</pre>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => resolveApproval(ev.request_id!, true)}>Approve</Button>
+            <Button size="sm" variant="outline" onClick={() => resolveApproval(ev.request_id!, false)}>Deny</Button>
+          </div>
+        </div>
+      );
     }
     if (ev.type === "tool_call") {
       return (

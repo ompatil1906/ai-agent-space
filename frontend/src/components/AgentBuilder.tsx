@@ -33,6 +33,32 @@ interface AgentBuilderProps {
   initial?: Partial<any>;
 }
 
+
+const TEMPLATES = [
+  {
+    name: "Research Assistant",
+    description: "Web research with tool use and structured summaries",
+    system_prompt: "You are an expert research assistant. Use tools to gather information, then synthesize clear, cited answers. Prefer primary sources.",
+    model_name: "gpt-4o-mini",
+    workflow_type: "single" as const,
+    longterm_enabled: true,
+  },
+  {
+    name: "Code Reviewer",
+    description: "Multi-agent code review: security, style, and correctness",
+    system_prompt: "You coordinate specialists to review code for bugs, security issues, and style. Provide actionable feedback.",
+    model_name: "gpt-4o",
+    workflow_type: "supervisor" as const,
+  },
+  {
+    name: "Debate Moderator",
+    description: "Two-sided debate on any topic with a final synthesis",
+    system_prompt: "You moderate a structured debate between pro and con specialists, then produce a balanced summary.",
+    model_name: "gpt-4o-mini",
+    workflow_type: "debate" as const,
+  },
+];
+
 const DEFAULT_PROMPT = "You are a helpful AI assistant. You have access to tools when configured.";
 
 export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
@@ -389,6 +415,28 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
         <CardTitle>Agent Builder</CardTitle>
       </CardHeader>
       <CardContent>
+        <div className="mb-4 flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Start from template:</span>
+          <select
+            className="rounded-md border border-input bg-transparent px-2 py-1 text-sm"
+            onChange={(e) => {
+              const t = TEMPLATES.find((x) => x.name === e.target.value);
+              if (!t) return;
+              setName(t.name);
+              setDescription(t.description);
+              setSystemPrompt(t.system_prompt);
+              setModelName(t.model_name);
+              setWorkflowType(t.workflow_type);
+              if ("longterm_enabled" in t) setLongtermEnabled(!!(t as any).longterm_enabled);
+            }}
+            defaultValue=""
+          >
+            <option value="" disabled>Choose a template…</option>
+            {TEMPLATES.map((t) => (
+              <option key={t.name} value={t.name}>{t.name}</option>
+            ))}
+          </select>
+        </div>
         <Tabs
           value={editorMode}
           onValueChange={(value: any) => {

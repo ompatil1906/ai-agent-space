@@ -25,14 +25,107 @@ from app.services.mcp_service import mcp_service
 
 logger = logging.getLogger(__name__)
 
-END_SENTINEL = "__end__"
+# ---------------------------------------------------------------------------
+# Human-in-the-Loop tool approval (in-memory, single-process)
+# ---------------------------------------------------------------------------
+_approval_futures: Dict[str, asyncio.Future] = {}
 
+def request_tool_approval(tool_name: str, args: dict, thread_id: str) -> str:
+    """Create a pending approval future and return its request_id."""
+    request_id = f"{thread_id}:{tool_name}:{int(time.time() * 1000)}"
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+    _approval_futures[request_id] = future
+    logger.info(f"Approval requested: {request_id} for {tool_name}")
+    return request_id
 
-class AgentState(TypedDict, total=False):
-    messages: Annotated[List[BaseMessage], operator.add]
-    attempts: int  # reflection rounds consumed
-    confidence: float  # self-estimated completion confidence (0-1)
-    escalated: bool  # True when the agent wants a human in the loop
+async def wait_for_approval(request_id: str, timeout: float = 300.0) -> bool:
+    future = _approval_futures.get(request_id)
+    if not future:
+        return True
+    try:
+        return await asyncio.wait_for(future, timeout=timeout)
+    except asyncio.TimeoutError:
+        logger.warning(f"Approval timed out: {request_id}")
+        return False
+    finally:
+        _approval_futures.pop(request_id, None)
+
+def resolve_approval(request_id: str, approved: bool) -> bool:
+    """Resolve a pending approval. Returns True if a future was found."""
+    future = _approval_futures.get(request_id)
+    if future and not future.done():
+        future.set_result(approved)
+        return True
+    return False
+
+def _needs_approval(agent_config: Dict[str, Any], tool_name: str) -> bool:
+    autonomy = (agent_config.get("autonomy_level") or "supervised").lower()
+    if autonomy != "supervised":
+        return False
+    # Optional per-tool override in tools_config
+    for tc in agent_config.get("tools_config") or []:
+        if tc.get("name") == tool_name and "requires_approval" in tc:
+            return bool(tc["requires_approval"])
+    return True  # default for supervised
+
+def wrap_tools_for_approval(tools: List[Any], agent_config: Dict[str, Any], thread_id: str) -> List[Any]:
+    """Wrap tools so supervised agents pause for user approval before execution."""
+    from langchain_core.tools import StructuredTool
+    wrapped = []
+    for tool in tools:
+        if not _needs_approval(agent_config, getattr(tool, "name", "")):
+            wrapped.append(tool)
+            continue
+
+        original_coroutine = getattr(tool, "coroutine", None)
+        original_func = getattr(tool, "func", None)
+        tool_name = tool.name
+
+        async def make_approved_run(name=tool_name, orig_coro=original_coroutine, orig_func=original_func):
+            async def approved_run(**kwargs):
+                request_id = request_tool_approval(name, kwargs, thread_id)
+                # Attach to the tool instance that will be in the list
+                # We set it on a shared holder that the stream loop can see
+                if not hasattr(wrap_tools_for_approval, "_pending"):
+                    wrap_tools_for_approval._pending = {}
+                wrap_tools_for_approval._pending[name] = request_id
+                approved = await wait_for_approval(request_id)
+                wrap_tools_for_approval._pending.pop(name, None)
+                if not approved:
+                    return f"Tool call '{name}' was denied by the user."
+                if orig_coro:
+                    return await orig_coro(**kwargs)
+                if orig_func:
+                    return orig_func(**kwargs)
+                return "Tool execution failed: no callable found."
+            return approved_run
+
+        # Build the tool with a stable closure
+        async def approved_run(**kwargs):
+            request_id = request_tool_approval(tool_name, kwargs, thread_id)
+            if not hasattr(wrap_tools_for_approval, "_pending"):
+                wrap_tools_for_approval._pending = {}
+            wrap_tools_for_approval._pending[tool_name] = request_id
+            approved = await wait_for_approval(request_id)
+            wrap_tools_for_approval._pending.pop(tool_name, None)
+            if not approved:
+                return f"Tool call '{tool_name}' was denied by the user."
+            if original_coroutine:
+                return await original_coroutine(**kwargs)
+            if original_func:
+                return original_func(**kwargs)
+            return "Tool execution failed: no callable found."
+
+        new_tool = StructuredTool.from_function(
+            coroutine=approved_run,
+            name=tool.name,
+            description=tool.description or "",
+            args_schema=getattr(tool, "args_schema", None),
+        )
+        wrapped.append(new_tool)
+    return wrapped
+
 
 
 def get_checkpointer():
@@ -1082,6 +1175,9 @@ async def stream_agent(
     """
     try:
         tools = await _load_tools(agent_config, tools)
+        # Human-in-the-loop wrapping for supervised agents
+        if tools and (agent_config.get("autonomy_level") or "supervised").lower() == "supervised":
+            tools = wrap_tools_for_approval(tools, agent_config, thread_id or "default")
         graph = build_agent_graph(agent_config, tools)
         config = {
             "configurable": {"thread_id": thread_id or f"run-{hash(user_input)}"},
@@ -1122,11 +1218,25 @@ async def stream_agent(
                     }
 
             elif kind == "on_tool_start":
+                tool_name = event.get("name", "tool")
+                tool_args = event.get("data", {}).get("input", {})
                 yield {
                     "type": "tool_call",
-                    "name": event.get("name", "tool"),
-                    "args": event.get("data", {}).get("input", {}),
+                    "name": tool_name,
+                    "args": tool_args,
                 }
+                # If this tool is awaiting approval, emit the request so the UI can respond
+                pending = getattr(wrap_tools_for_approval, "_pending", {})
+                rid = pending.get(tool_name)
+                if rid:
+                    yield {
+                        "type": "approval_required",
+                        "request_id": rid,
+                        "name": tool_name,
+                        "args": tool_args,
+                    }
+                    # Clear so we don't re-emit
+                    pending.pop(tool_name, None)
 
             elif kind == "on_tool_end":
                 output = event.get("data", {}).get("output", "")

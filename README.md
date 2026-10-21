@@ -1,3 +1,4 @@
+- **Human-in-the-Loop Tool Approval**: Supervised agents pause on tool calls and emit `approval_required` events. The UI shows Approve/Deny; the backend resumes via in-memory futures (single-process).
 - **Multi-turn Conversations**: Persistent thread_id on runs, automatic thread continuity via LangGraph checkpointer, chat UI with history, New Chat / load previous threads.
 
 - **Structured Outputs & Reliable Function Calling**: Optional JSON Schema enforcement on final answers via `advanced_config.structured_output_enabled` + `output_schema`. Tool errors are caught and returned to the LLM for recovery. `tool_choice` (auto/required/none) supported.

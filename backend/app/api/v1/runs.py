@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
-from app.agents.runtime import run_agent, stream_agent, now_ms
+from app.agents.runtime import run_agent, stream_agent, now_ms, resolve_approval
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_active_user
@@ -502,3 +502,23 @@ def evaluation_summary(
         .all()
     )
     return EvaluationSummary(count=count, average_score=round(avg, 2), recent=recent)
+
+
+from pydantic import BaseModel
+
+class ApprovalRequest(BaseModel):
+    request_id: str
+    approved: bool
+
+@router.post("/approval")
+async def resolve_tool_approval(
+    body: ApprovalRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Resolve a pending human-in-the-loop tool approval.
+    Called by the frontend when the user approves or denies a tool call.
+    """
+    success = resolve_approval(body.request_id, body.approved)
+    if not success:
+        raise HTTPException(status_code=404, detail="Approval request not found or already resolved")
+    return {"status": "ok", "request_id": body.request_id, "approved": body.approved}
