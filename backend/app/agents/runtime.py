@@ -2,7 +2,7 @@
 Advanced LangGraph-based agent runtime with streaming, memory, MCP tools,
 sandboxed execution tools, long-horizon planning, Reflexion-style
 self-correction with confidence estimation, and multi-agent orchestration
-(single / sequential / supervisor / parallel / debate / map_reduce).
+(single / sequential / supervisor / parallel / debate / map_reduce / consensus / hierarchical).
 
 Memory: Uses MemorySaver by default. Switches to PostgresSaver when
 DATABASE_URL is PostgreSQL and the package is installed (production-ready).
@@ -1020,6 +1020,86 @@ def build_map_reduce_graph(agent_config: Dict[str, Any], tools: Optional[List[An
     return workflow.compile(checkpointer=checkpointer)
 
 
+def build_consensus_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
+    """
+    Consensus multi-agent pattern.
+    Specialists independently generate answers in parallel.
+    A consensus agent then produces a final answer that synthesizes agreement
+    and explicitly notes any material disagreements.
+    Useful for higher-reliability outputs (research, analysis, decision support).
+    """
+    wf = agent_config.get("workflow_config") or {}
+    sub_agents = wf.get("sub_agents") or []
+    if len(sub_agents) < 2:
+        return build_single_agent_graph(agent_config, tools)
+
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    temperature = agent_config.get("temperature", 0.3)  # lower temp for more consistent consensus
+    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
+    llm = get_llm(model_name, temperature, base_url)
+    if tools:
+        llm = llm.bind_tools(tools)
+
+    workflow = StateGraph(AgentState)
+
+    async def specialists_node(state: AgentState):
+        """Run all specialists concurrently."""
+        import asyncio
+
+        async def run_one(sa: Dict[str, Any]):
+            name = sa.get("name", "specialist")
+            prompt = sa.get("system_prompt", "You are an independent specialist. Provide a clear, well-reasoned answer.")
+            enhanced = get_enhanced_system_prompt(prompt, agent_config, state)
+            messages = [SystemMessage(content=enhanced)] + state["messages"]
+            try:
+                response = await llm.ainvoke(messages)
+                response.additional_kwargs = response.additional_kwargs or {}
+                response.additional_kwargs["agent"] = name
+                return response
+            except Exception as e:
+                logger.warning(f"Consensus specialist {name} failed: {e}")
+                err = AIMessage(content=f"[{name} error]: {str(e)}")
+                err.additional_kwargs = {"agent": name}
+                return err
+
+        results = await asyncio.gather(*[run_one(sa) for sa in sub_agents])
+        return {"messages": list(results)}
+
+    def consensus_node(state: AgentState):
+        """Produce a consensus answer from independent specialist outputs."""
+        specialist_outputs = [
+            f"[{getattr(m, 'additional_kwargs', {}).get('agent', 'specialist')}]:\n{m.content}"
+            for m in state["messages"]
+            if isinstance(m, AIMessage) and getattr(m, "additional_kwargs", {}).get("agent")
+        ]
+        consensus_prompt = (
+            "You are a consensus facilitator. You have received independent answers from multiple specialists.\n\n"
+            "Your job:\n"
+            "1. Identify points of agreement.\n"
+            "2. Note any material disagreements or uncertainty.\n"
+            "3. Produce a single, coherent final answer that represents the best consensus.\n"
+            "4. If specialists strongly disagree on a key point, explicitly say so and explain the different views.\n"
+            "5. Prefer the most evidence-based or carefully reasoned positions.\n\n"
+            "Specialist answers:\n\n" + "\n\n---\n\n".join(specialist_outputs)
+        )
+        enhanced = get_enhanced_system_prompt(consensus_prompt, agent_config, state)
+        messages = [SystemMessage(content=enhanced)] + [
+            m for m in state["messages"] if not getattr(m, "additional_kwargs", {}).get("agent")
+        ]
+        response = llm.invoke(messages)
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = "consensus"
+        return {"messages": [response]}
+
+    workflow.add_node("specialists", specialists_node)
+    workflow.add_node("consensus", consensus_node)
+    workflow.set_entry_point("specialists")
+    workflow.add_edge("specialists", "consensus")
+    workflow.add_edge("consensus", END)
+
+    return workflow.compile(checkpointer=checkpointer)
+
+
 def build_hierarchical_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """
     Hierarchical multi-agent: top-level manager delegates to teams.
@@ -1122,6 +1202,8 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
         return build_debate_graph(agent_config, tools)
     if wf_type == "map_reduce":
         return build_map_reduce_graph(agent_config, tools)
+    if wf_type == "consensus":
+        return build_consensus_graph(agent_config, tools)
     if wf_type == "hierarchical":
         return build_hierarchical_graph(agent_config, tools)
     return build_single_agent_graph(agent_config, tools)
