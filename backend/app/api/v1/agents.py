@@ -311,6 +311,26 @@ def clear_agent_memory(
     return {"cleared": deleted, "agent_id": agent_id, "user_id": current_user.id, "shared": shared}
 
 
+@router.delete("/{agent_id}/memories/{memory_id}")
+def delete_agent_memory(
+    agent_id: int,
+    memory_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Delete a specific long-term memory by ID."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.owner_id != current_user.id and not agent.is_public:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    from app.services.memory_service import get_memory_service
+    success = get_memory_service().delete_memory(memory_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Memory not found or could not be deleted")
+    return {"deleted": True, "memory_id": memory_id, "agent_id": agent_id}
+
 @router.get("/{agent_id}/memories")
 def list_agent_memories(
     agent_id: int,

@@ -8,6 +8,12 @@
 A modern, advanced platform for creating, configuring, running, and sharing AI agents with real tool use (MCP), streaming, memory, and multi-agent workflows.
 
 
+
+## Recent Enhancements (Advanced Session)
+
+- **Workflow Visualizer**: Interactive tree/card view of multi-agent workflows (supervisor, hierarchical, parallel, debate, consensus, map-reduce, sequential) directly on the agent run page. Supports nested teams.
+- **Granular Memory Management**: Individual long-term memory deletion via `DELETE /api/v1/agents/{id}/memories/{memory_id}` plus UI delete buttons. Complements existing list/clear endpoints.
+
 ## Advanced Features
 
 - **Local / Open-Source Models**: Set `OPENAI_BASE_URL` (or per-agent `base_url`) to any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, etc.). Dummy API key works for local servers.

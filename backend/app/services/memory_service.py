@@ -232,3 +232,15 @@ def get_memory_service() -> LongTermMemoryService:
     if _memory_service is None:
         _memory_service = LongTermMemoryService()
     return _memory_service
+
+    def delete_memory(self, memory_id: str) -> bool:
+        """Delete a single memory by its Chroma ID."""
+        if not self._available or not memory_id:
+            return False
+        try:
+            self.collection.delete(ids=[memory_id])
+            logger.info("Deleted memory %s", memory_id)
+            return True
+        except Exception as e:
+            logger.warning("Failed to delete memory %s: %s", memory_id, e)
+            return False

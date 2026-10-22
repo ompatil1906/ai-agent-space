@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { API_BASE } from "@/lib/api";
+import WorkflowVisualizer from "@/components/WorkflowVisualizer";
 
 interface StreamEvent {
   type: "token" | "tool_call" | "tool_result" | "agent_step" | "reflection" | "confidence" | "done" | "error" | "approval_required" | "thought";
@@ -66,7 +67,23 @@ function AgentRunContent() {
     }
   };
 
-  useEffect(() => {
+  const deleteMemory = async (memoryId: string) => {
+    if (!confirm("Delete this memory?")) return;
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/agents/${agentId}/memories/${memoryId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setMemories((prev) => prev.filter((m) => m.id !== memoryId));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+    useEffect(() => {
     const t = localStorage.getItem("token");
     if (!t) {
       window.location.href = "/login";
@@ -611,8 +628,12 @@ function AgentRunContent() {
           <p className="font-mono text-xs">
             <span className="text-muted-foreground">memory:</span> {JSON.stringify(agent?.memory_config || {})}
           </p>
-          <p className="font-mono text-xs">
-            <span className="text-muted-foreground">workflow:</span> {JSON.stringify(agent?.workflow_config || {})}
+          <div className="mt-4">
+            <h3 className="text-sm font-medium mb-2">Workflow Structure</h3>
+            <WorkflowVisualizer workflow={agent?.workflow_config} agentName={agent?.name} />
+          </div>
+          <p className="font-mono text-xs mt-2">
+            <span className="text-muted-foreground">raw workflow:</span> {JSON.stringify(agent?.workflow_config || {})}
           </p>
 
           <div className="mt-4">
@@ -627,9 +648,14 @@ function AgentRunContent() {
             ) : (
               <div className="mt-2 space-y-2 max-h-48 overflow-auto">
                 {memories.map((m) => (
-                  <div key={m.id} className="text-xs border rounded p-2">
-                    <div className="font-mono text-muted-foreground">{m.id.slice(0, 8)}...</div>
-                    <div className="mt-1">{m.text.slice(0, 200)}{m.text.length > 200 ? "..." : ""}</div>
+                  <div key={m.id} className="text-xs border rounded p-2 flex justify-between gap-2">
+                    <div className="flex-1">
+                      <div className="font-mono text-muted-foreground">{m.id.slice(0, 8)}...</div>
+                      <div className="mt-1">{m.text.slice(0, 200)}{m.text.length > 200 ? "..." : ""}</div>
+                    </div>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-red-500" onClick={() => deleteMemory(m.id)}>
+                      ×
+                    </Button>
                   </div>
                 ))}
               </div>
