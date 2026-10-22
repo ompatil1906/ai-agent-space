@@ -13,6 +13,7 @@ import json
 import logging
 import time
 import asyncio
+import os
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
@@ -189,12 +190,35 @@ def get_checkpointer():
 checkpointer = get_checkpointer()
 
 
-def get_llm(model_name: str, temperature: float, base_url: Optional[str] = None) -> ChatOpenAI:
-    """Create an OpenAI-compatible chat model. Supports local endpoints via base_url."""
+def get_llm(model_name: str, temperature: float, base_url: Optional[str] = None, provider: Optional[str] = None):
+    """Create a chat model. Supports OpenAI (default), Anthropic (claude-*), and OpenAI-compatible local servers.
+
+    Provider is auto-detected from model_name prefix or can be passed explicitly.
+    For Anthropic, set ANTHROPIC_API_KEY in the environment.
+    """
+    name = (model_name or "gpt-4o-mini").lower()
+    detected = provider or (
+        "anthropic" if name.startswith("claude") else
+        "openai"
+    )
+
+    if detected == "anthropic":
+        try:
+            from langchain_anthropic import ChatAnthropic
+            return ChatAnthropic(
+                model=model_name,
+                temperature=temperature,
+                api_key=os.environ.get("ANTHROPIC_API_KEY"),
+                streaming=True,
+            )
+        except Exception as e:
+            logger.warning("Anthropic provider unavailable (%s). Falling back to OpenAI.", e)
+
+    # Default: OpenAI or OpenAI-compatible (Ollama, LM Studio, vLLM, etc.)
     kwargs = {
         "model": model_name,
         "temperature": temperature,
-        "api_key": settings.OPENAI_API_KEY or "sk-local",  # dummy key for local servers that ignore it
+        "api_key": settings.OPENAI_API_KEY or "sk-local",
         "streaming": True,
     }
     effective_base = base_url or settings.OPENAI_BASE_URL or None

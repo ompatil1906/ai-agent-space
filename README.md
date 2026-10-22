@@ -72,6 +72,13 @@ Open http://localhost:3000
 - **Evaluation Harness**: LLM-as-judge scoring endpoint (`POST /api/v1/agents/{id}/evaluate`)
 - **Memory**: Thread-based conversation memory via LangGraph checkpointer (MemorySaver; PostgresSaver when DATABASE_URL is PostgreSQL)
 
+
+## Multi-Provider LLM Support
+- Agents can use OpenAI models (gpt-*) by default.
+- Claude models (claude-*) are supported when `ANTHROPIC_API_KEY` is set (requires `langchain-anthropic`).
+- Any OpenAI-compatible endpoint (Ollama, LM Studio, vLLM, Together, etc.) via `OPENAI_BASE_URL` or per-agent `base_url`.
+- Provider is auto-detected from the model name prefix.
+
 ## Tech Stack
 - Frontend: Next.js 15 + TypeScript + Tailwind + shadcn/ui
 - Backend: FastAPI + SQLAlchemy + Pydantic
