@@ -14,6 +14,7 @@ from app.schemas import (
     AgentRatingPublic,
     AgentWithRating,
     LeaderboardEntry,
+    CreditTransactionPublic,
 )
 
 router = APIRouter()
@@ -399,3 +400,23 @@ def get_leaderboard(
         reverse=True,
     )
     return [LeaderboardEntry(rank=i + 1, **e) for i, e in enumerate(entries[:limit])]
+
+
+@router.get("/me/transactions", response_model=List[CreditTransactionPublic])
+def list_my_credit_transactions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    skip: int = 0,
+    limit: int = 50,
+) -> Any:
+    """List the current user's credit transaction history (purchases, sales, metering, etc.)."""
+    from app.models import CreditTransaction
+    txs = (
+        db.query(CreditTransaction)
+        .filter(CreditTransaction.user_id == current_user.id)
+        .order_by(CreditTransaction.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return txs

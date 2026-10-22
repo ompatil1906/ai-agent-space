@@ -163,6 +163,10 @@ class ToolApproval(Base):
     agent = relationship("Agent")
 
 
+class CreditTransaction(Base):
+    """Ledger of credit movements for users (purchases, sales, run metering, grants)."""
+    __tablename__ = "credit_transactions"
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     amount = Column(Integer, nullable=False)  # positive = credit received, negative = credit spent

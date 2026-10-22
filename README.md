@@ -1,3 +1,8 @@
+## Critical Fix (2026-10-22)
+- Fixed missing `CreditTransaction` SQLAlchemy model class (was causing import/relationship errors).
+- Added `GET /api/v1/marketplace/me/transactions` for credit ledger history.
+
+
 - **Human-in-the-Loop Tool Approval**: Supervised agents pause on tool calls and emit `approval_required` events. Approvals are persisted in the `tool_approvals` table (multi-process and restart-safe). The UI shows Approve/Deny; the backend polls the DB and resumes. `GET /api/v1/agents/approvals/pending` lists open requests.
 - **API Keys for Programmatic Access**: Create scoped API keys (`ask_...`) via `/api/v1/api-keys`. Use them as Bearer tokens to invoke agents (run / stream) without a user JWT. Keys can be optionally restricted to a single agent, have expiration, and are revocable. Raw key is shown only once on creation. Dashboard includes a management UI.
 - **Multi-turn Conversations**: Persistent thread_id on runs, automatic thread continuity via LangGraph checkpointer, chat UI with history, New Chat / load previous threads.
