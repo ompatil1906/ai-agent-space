@@ -83,6 +83,27 @@ function AgentRunContent() {
     }
   };
 
+  const consolidateMemories = async () => {
+    if (!confirm("Consolidate memories into denser summaries?")) return;
+    setLoadingMemories(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/agents/${agentId}/memories/consolidate`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        await loadMemories();
+      } else {
+        console.error(await res.text());
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingMemories(false);
+    }
+  };
+
     useEffect(() => {
     const t = localStorage.getItem("token");
     if (!t) {
@@ -639,9 +660,14 @@ function AgentRunContent() {
           <div className="mt-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">Long-term Memories</h3>
-              <Button size="sm" variant="outline" onClick={loadMemories} disabled={loadingMemories}>
-                {loadingMemories ? "Loading..." : "Refresh"}
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={consolidateMemories} disabled={loadingMemories}>
+                  Consolidate
+                </Button>
+                <Button size="sm" variant="outline" onClick={loadMemories} disabled={loadingMemories}>
+                  {loadingMemories ? "Loading..." : "Refresh"}
+                </Button>
+              </div>
             </div>
             {memories.length === 0 ? (
               <p className="text-xs text-muted-foreground mt-2">No long-term memories stored yet.</p>

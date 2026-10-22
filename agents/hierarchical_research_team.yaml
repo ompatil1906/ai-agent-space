@@ -1,0 +1,62 @@
+# Advanced Hierarchical Multi-Agent Example
+# Manager coordinates Research and Analysis teams.
+# Each team is itself a supervisor over specialists.
+# Use with Agent Builder YAML import or as reference for workflow_config.
+
+name: Hierarchical Research Team
+description: Multi-level research orchestration with specialized teams
+system_prompt: |
+  You are the top-level research manager. Delegate tasks to the appropriate team.
+  Prefer the research_team for information gathering and the analysis_team for synthesis and critique.
+  Always produce a final concise answer after teams report back.
+
+model_name: gpt-4o-mini
+temperature: 0.4
+
+memory:
+  enabled: true
+  max_messages: 30
+  longterm:
+    enabled: true
+    k: 6
+    shared: true
+
+workflow:
+  type: hierarchical
+  teams:
+    - name: research_team
+      description: Gathers facts, sources, and raw information
+      system_prompt: You lead the research team. Assign subtasks to specialists and compile findings.
+      workflow:
+        type: supervisor
+        sub_agents:
+          - name: web_researcher
+            description: Finds primary sources and recent data
+            system_prompt: You are a precise web researcher. Cite sources when possible.
+          - name: data_extractor
+            description: Extracts structured facts from text
+            system_prompt: Extract key facts, numbers, and claims into clear bullet points.
+
+    - name: analysis_team
+      description: Critiques, synthesizes, and evaluates research
+      system_prompt: You lead the analysis team. Produce balanced, high-quality synthesis.
+      workflow:
+        type: parallel
+        sub_agents:
+          - name: critic
+            description: Challenges assumptions and looks for weaknesses
+            system_prompt: Identify logical gaps, biases, or missing evidence.
+          - name: synthesizer
+            description: Combines findings into a coherent answer
+            system_prompt: Produce a clear, well-structured final synthesis.
+
+execution:
+  max_steps: 40
+  autonomy_level: semi_autonomous
+  sandbox_enabled: false
+  planning_enabled: true
+  reflection_enabled: true
+  max_reflections: 2
+  structured_output_enabled: false
+
+tools: []

@@ -1,3 +1,8 @@
+
+## Advanced Session Update (Memory Consolidation)
+- **Long-term Memory Consolidation**: New `POST /api/v1/agents/{id}/memories/consolidate` endpoint. Summarizes raw memories into denser consolidated entries using the LLM. UI button available on the agent run page. Helps keep retrieval focused and token-efficient for long-running agents.
+- Fixed critical bug in `LongTermMemoryService.delete_memory` (method was incorrectly placed outside the class).
+
 ## Critical Fix (2026-10-22)
 - Fixed missing `CreditTransaction` SQLAlchemy model class (was causing import/relationship errors).
 - Added `GET /api/v1/marketplace/me/transactions` for credit ledger history.

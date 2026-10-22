@@ -331,6 +331,28 @@ def delete_agent_memory(
         raise HTTPException(status_code=404, detail="Memory not found or could not be deleted")
     return {"deleted": True, "memory_id": memory_id, "agent_id": agent_id}
 
+
+@router.post("/{agent_id}/memories/consolidate")
+def consolidate_agent_memories(
+    agent_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Consolidate long-term memories into denser summaries for the current user on this agent."""
+    agent = db.query(Agent).filter(Agent.id == agent_id, Agent.owner_id == current_user.id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    mem_cfg = agent.memory_config or {}
+    shared = mem_cfg.get("shared")
+    shared_ns = mem_cfg.get("shared_namespace") if shared else None
+    result = get_memory_service().consolidate(
+        agent_id=agent_id,
+        user_id=current_user.id,
+        shared_namespace=shared_ns,
+    )
+    return {"ok": True, **result}
+
+
 @router.get("/{agent_id}/memories")
 def list_agent_memories(
     agent_id: int,

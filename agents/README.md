@@ -21,3 +21,7 @@ Supported types: `single` (default), `sequential`, `supervisor`, `parallel`, `de
 All specialist workers are full tool-using ReAct agents (they can call MCP tools, sandbox, and use reflection when configured).
 
 Full orchestration (routing to actual sub-agents) can be extended in `backend/app/agents/runtime.py`.
+
+## Hierarchical Example
+See `hierarchical_research_team.yaml` for a full multi-level (manager → teams → specialists) configuration that can be imported into the Agent Builder.
+

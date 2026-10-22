@@ -227,12 +227,6 @@ class LongTermMemoryService:
             )
 
 
-def get_memory_service() -> LongTermMemoryService:
-    global _memory_service
-    if _memory_service is None:
-        _memory_service = LongTermMemoryService()
-    return _memory_service
-
     def delete_memory(self, memory_id: str) -> bool:
         """Delete a single memory by its Chroma ID."""
         if not self._available or not memory_id:
@@ -244,3 +238,76 @@ def get_memory_service() -> LongTermMemoryService:
         except Exception as e:
             logger.warning("Failed to delete memory %s: %s", memory_id, e)
             return False
+
+
+
+    def consolidate(
+        self,
+        agent_id: int,
+        user_id: int,
+        shared_namespace: Optional[str] = None,
+        llm: Any = None,
+    ) -> Dict[str, Any]:
+        """Summarize older memories into denser consolidated memories and optionally prune raw ones.
+
+        Returns counts of processed / created memories.
+        """
+        if not self._available:
+            return {"processed": 0, "created": 0, "available": False}
+        try:
+            where = self._namespace_key(agent_id, user_id, shared_namespace)
+            existing = self.collection.get(where=where, include=["documents", "metadatas"])
+            docs = existing.get("documents") or []
+            metas = existing.get("metadatas") or []
+            ids = existing.get("ids") or []
+            if len(docs) < 3:
+                return {"processed": len(docs), "created": 0, "available": True, "note": "not enough memories"}
+
+            # Group raw (non-summary) memories
+            raw_texts = []
+            for doc, meta in zip(docs, metas):
+                if not meta or meta.get("type") != "summary":
+                    raw_texts.append(doc)
+
+            if len(raw_texts) < 2:
+                return {"processed": len(docs), "created": 0, "available": True, "note": "few raw memories"}
+
+            combined = "\n---\n".join(raw_texts[:20])[:6000]
+            from langchain_openai import ChatOpenAI
+            if llm is None:
+                llm = ChatOpenAI(
+                    model="gpt-4o-mini",
+                    temperature=0.0,
+                    api_key=settings.OPENAI_API_KEY or "sk-local",
+                    base_url=settings.OPENAI_BASE_URL or None,
+                )
+            prompt = (
+                "Consolidate the following agent memories into 3-6 dense, non-redundant bullet points. "
+                "Preserve important facts, preferences, decisions, and outcomes. Be concise.\n\n"
+                + combined
+            )
+            resp = llm.invoke(prompt)
+            summary = getattr(resp, "content", str(resp)) or ""
+            new_id = self.add_memory(
+                agent_id,
+                user_id,
+                summary,
+                metadata={"type": "consolidated", "source_count": len(raw_texts)},
+                shared_namespace=shared_namespace,
+            )
+            return {
+                "processed": len(docs),
+                "created": 1 if new_id else 0,
+                "available": True,
+                "summary_id": new_id,
+            }
+        except Exception as e:
+            logger.warning("Memory consolidation failed: %s", e)
+            return {"processed": 0, "created": 0, "available": True, "error": str(e)}
+
+
+def get_memory_service() -> LongTermMemoryService:
+    global _memory_service
+    if _memory_service is None:
+        _memory_service = LongTermMemoryService()
+    return _memory_service
