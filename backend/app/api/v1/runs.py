@@ -10,7 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.agents.runtime import run_agent, stream_agent, now_ms, resolve_approval
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import get_current_active_user
+from app.core.security import get_current_active_user, get_current_user_flexible
 from app.models import Agent, AgentRun, User, AgentEvaluation, CreditTransaction, ToolApproval
 from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse, BatchEvaluateRequest, BatchEvaluateResponse, AgentEvaluationPublic, EvaluationSummary
 from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse, BatchEvaluateRequest, BatchEvaluateResponse, AgentEvaluationPublic, EvaluationSummary
@@ -43,7 +43,7 @@ async def run_agent_endpoint(
     agent_id: int,
     request: RunRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_flexible),
 ) -> Any:
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
     if not agent:
@@ -125,7 +125,7 @@ async def stream_agent_endpoint(
     agent_id: int,
     request: RunRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
     if not agent:
@@ -260,7 +260,7 @@ async def evaluate_agent(
     agent_id: int,
     request: EvaluateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_flexible),
 ) -> Any:
     """Run the agent then evaluate the output with an LLM-as-judge."""
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
@@ -307,7 +307,7 @@ async def batch_evaluate_agent(
     agent_id: int,
     request: BatchEvaluateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_flexible),
 ) -> Any:
     """Batch evaluation harness: run the agent on multiple inputs and score each with LLM-as-judge."""
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
@@ -366,7 +366,7 @@ async def batch_evaluate_agent(
 async def list_agent_runs(
     agent_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_flexible),
     skip: int = 0,
     limit: int = 50,
 ):
@@ -389,7 +389,7 @@ async def list_agent_runs(
 async def list_agent_threads(
     agent_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_flexible),
     limit: int = 30,
 ):
     """List distinct conversation threads for this agent (grouped by thread_id), newest first."""
@@ -436,7 +436,7 @@ async def list_agent_threads(
 @router.get("/runs/all", response_model=List[AgentRunPublic])
 async def list_all_my_runs(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_flexible),
     skip: int = 0,
     limit: int = 50,
 ):
@@ -455,7 +455,7 @@ async def list_all_my_runs(
 def list_evaluations(
     agent_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_flexible),
     skip: int = 0,
     limit: int = 50,
 ):
@@ -479,7 +479,7 @@ def list_evaluations(
 def evaluation_summary(
     agent_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     """Summary statistics and recent evaluations for dashboard charts."""
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
@@ -514,7 +514,7 @@ class ApprovalRequest(BaseModel):
 @router.post("/approval")
 async def resolve_tool_approval(
     body: ApprovalRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_flexible),
     db: Session = Depends(get_db),
 ):
     """Resolve a pending human-in-the-loop tool approval.
@@ -532,7 +532,7 @@ async def resolve_tool_approval(
 
 @router.get("/approvals/pending")
 async def list_pending_approvals(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_flexible),
     db: Session = Depends(get_db),
 ):
     """List all pending tool approval requests for the current user.

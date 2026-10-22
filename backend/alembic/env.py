@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.core.config import settings
 from app.core.database import Base
 # Import all models so they are registered with Base.metadata
-from app.models.user import User, Agent, AgentRun, AgentVersion, AgentRating  # noqa
+from app.models.user import User, Agent, AgentRun, AgentVersion, AgentRating, AgentEvaluation, CreditTransaction, ToolApproval, ApiKey  # noqa
 
 # this is the Alembic Config object
 config = context.config

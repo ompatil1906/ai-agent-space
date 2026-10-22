@@ -354,3 +354,31 @@ class LeaderboardEntry(BaseModel):
     run_count: int = 0
     sales_count: int = 0
     score: float = 0.0
+
+
+# API Key schemas
+class ApiKeyCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    agent_id: Optional[int] = None  # restrict to specific agent if set
+    scopes: List[str] = Field(default_factory=lambda: ["run"])
+    expires_in_days: Optional[int] = Field(default=None, ge=1, le=365)
+
+
+class ApiKeyPublic(BaseModel):
+    id: int
+    name: str
+    key_prefix: str
+    agent_id: Optional[int] = None
+    scopes: List[str] = Field(default_factory=list)
+    is_active: bool
+    expires_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ApiKeyCreateResponse(ApiKeyPublic):
+    """Returned only on creation — includes the raw key once."""
+    raw_key: str

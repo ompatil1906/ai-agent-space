@@ -192,7 +192,17 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          {stats.evaluations_count > 0 && (
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-mono text-sm text-muted-foreground">API Keys</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ApiKeysManager />
+              </CardContent>
+            </Card>
+
+                    {stats.evaluations_count > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle className="font-mono text-sm text-muted-foreground">evaluation quality</CardTitle>
@@ -205,6 +215,108 @@ export default function DashboardPage() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+
+function ApiKeysManager() {
+  const [keys, setKeys] = useState<any[]>([]);
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [newRawKey, setNewRawKey] = useState<string | null>(null);
+
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+  const load = async () => {
+    if (!token) return;
+    const res = await fetch(`${API_BASE}/api-keys/`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) setKeys(await res.json());
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const create = async () => {
+    if (!token || !name.trim()) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api-keys/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNewRawKey(data.raw_key);
+        setName("");
+        load();
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const revoke = async (id: number) => {
+    if (!token) return;
+    await fetch(`${API_BASE}/api-keys/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    load();
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <input
+          className="flex-1 rounded border border-border bg-background px-2 py-1 text-sm"
+          placeholder="Key name (e.g. Production Bot)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <Button size="sm" onClick={create} disabled={loading || !name.trim()}>
+          {loading ? "Creating..." : "Create"}
+        </Button>
+      </div>
+      {newRawKey && (
+        <div className="rounded border border-amber-500/50 bg-amber-500/10 p-2 text-xs">
+          <p className="font-medium">Copy this key now — it will not be shown again:</p>
+          <code className="mt-1 block break-all">{newRawKey}</code>
+          <Button size="sm" variant="outline" className="mt-1" onClick={() => setNewRawKey(null)}>
+            Dismiss
+          </Button>
+        </div>
+      )}
+      <div className="space-y-1">
+        {keys.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No API keys yet</p>
+        ) : (
+          keys.map((k) => (
+            <div key={k.id} className="flex items-center justify-between rounded border px-2 py-1 text-xs">
+              <div>
+                <span className="font-medium">{k.name}</span>
+                <span className="ml-2 font-mono text-muted-foreground">{k.key_prefix}…</span>
+                {!k.is_active && <Badge variant="destructive" className="ml-2">revoked</Badge>}
+              </div>
+              {k.is_active && (
+                <Button size="sm" variant="ghost" onClick={() => revoke(k.id)}>
+                  Revoke
+                </Button>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Use as <code>Authorization: Bearer ask_...</code> to run agents programmatically.
+      </p>
     </div>
   );
 }

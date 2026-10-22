@@ -1,4 +1,5 @@
 - **Human-in-the-Loop Tool Approval**: Supervised agents pause on tool calls and emit `approval_required` events. Approvals are persisted in the `tool_approvals` table (multi-process and restart-safe). The UI shows Approve/Deny; the backend polls the DB and resumes. `GET /api/v1/agents/approvals/pending` lists open requests.
+- **API Keys for Programmatic Access**: Create scoped API keys (`ask_...`) via `/api/v1/api-keys`. Use them as Bearer tokens to invoke agents (run / stream) without a user JWT. Keys can be optionally restricted to a single agent, have expiration, and are revocable. Raw key is shown only once on creation. Dashboard includes a management UI.
 - **Multi-turn Conversations**: Persistent thread_id on runs, automatic thread continuity via LangGraph checkpointer, chat UI with history, New Chat / load previous threads.
 
 - **Structured Outputs & Reliable Function Calling**: Optional JSON Schema enforcement on final answers via `advanced_config.structured_output_enabled` + `output_schema`. Tool errors are caught and returned to the LLM for recovery. `tool_choice` (auto/required/none) supported.
@@ -66,6 +67,8 @@ Open http://localhost:3000
 - Checkpointer: MemorySaver (dev) / PostgresSaver (prod)
 
 ## Recent Updates
+- **API Keys**: Programmatic access to agents via revocable Bearer keys (ask_...). Managed in dashboard.
+
 - **Map-Reduce multi-agent**: Fan-out to specialist mappers then reduce/synthesize (workflow_config.type = "map_reduce")
 - **Evaluation Persistence**: All evaluate / batch results stored in agent_evaluations; summary + history endpoints
 - **Evaluation Dashboard**: Frontend page at /agents/[id]/evaluations with average score, trend bars, and run-new form

@@ -193,3 +193,27 @@ CreditTransaction.user = relationship(
 CreditTransaction.agent = relationship(
     "Agent", foreign_keys="CreditTransaction.agent_id", back_populates="transactions", viewonly=True
 )
+
+
+class ApiKey(Base):
+    """API keys for programmatic / external access to agents."""
+    __tablename__ = "api_keys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)  # human-readable label
+    key_prefix = Column(String, nullable=False, index=True)  # first 8 chars for display
+    key_hash = Column(String, nullable=False, unique=True, index=True)  # bcrypt or sha256 of full key
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=True, index=True)  # optional restriction to one agent
+    scopes = Column(JSON, default=list)  # e.g. ["run", "read"]
+    is_active = Column(Boolean, default=True)
+    expires_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="api_keys")
+    agent = relationship("Agent")
+
+
+# Register relationship
+User.api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")

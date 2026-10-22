@@ -8,6 +8,7 @@ from app.models.user import (
     AgentEvaluation,
     CreditTransaction,
     ToolApproval,
+    ApiKey,
 )
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "AgentEvaluation",
     "CreditTransaction",
     "ToolApproval",
+    "ApiKey",
 ]

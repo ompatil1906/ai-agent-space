@@ -66,3 +66,72 @@ def get_current_active_user(
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
+
+
+
+
+# ---------------------------------------------------------------------------
+# API Key authentication (programmatic access)
+# ---------------------------------------------------------------------------
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import hashlib
+from app.models import ApiKey
+
+# Optional bearer that does not auto-error
+optional_oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_STR}/auth/login",
+    auto_error=False,
+)
+api_key_bearer = HTTPBearer(auto_error=False)
+
+
+def _hash_api_key(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def get_user_from_api_key(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(api_key_bearer),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """Resolve user from an API key presented as Bearer token. Returns None if not an API key."""
+    if credentials is None or not credentials.credentials:
+        return None
+    token = credentials.credentials
+    if not token.startswith("ask_"):
+        return None
+    key_hash = _hash_api_key(token)
+    api_key = (
+        db.query(ApiKey)
+        .filter(ApiKey.key_hash == key_hash, ApiKey.is_active.is_(True))
+        .first()
+    )
+    if api_key is None:
+        return None
+    if api_key.expires_at and api_key.expires_at < datetime.utcnow():
+        return None
+    # Touch last_used
+    api_key.last_used_at = datetime.utcnow()
+    db.commit()
+    return db.query(User).filter(User.id == api_key.user_id).first()
+
+
+def get_current_user_flexible(
+    db: Session = Depends(get_db),
+    jwt_token: Optional[str] = Depends(optional_oauth2_scheme),
+    api_user: Optional[User] = Depends(get_user_from_api_key),
+) -> User:
+    """Accept either a JWT access token or an API key (Bearer ask_...)."""
+    if api_user is not None:
+        if not api_user.is_active:
+            raise HTTPException(status_code=400, detail="Inactive user")
+        return api_user
+    if jwt_token:
+        user = get_current_user(db=db, token=jwt_token)
+        if not user.is_active:
+            raise HTTPException(status_code=400, detail="Inactive user")
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated. Provide a Bearer JWT or API key.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
