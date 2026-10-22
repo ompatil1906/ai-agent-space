@@ -1231,6 +1231,13 @@ async def _load_tools(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
     from app.agents.tools import build_shared_memory_tools
     agent_tools.extend(build_shared_memory_tools(agent_config))
 
+    # Nested agent-as-tool (Agent-as-Tool pattern)
+    nested = agent_config.get("nested_agents") or []
+    if nested:
+        from app.agents.agent_tools import build_nested_agent_tools
+        depth = int(agent_config.get("_depth") or 0)
+        agent_tools.extend(build_nested_agent_tools(nested, current_depth=depth))
+
     if agent_config.get("sandbox_enabled"):
         from app.agents.tools import build_sandbox_tools
 

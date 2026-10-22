@@ -39,6 +39,40 @@ def _build_agent_config(agent: Agent, user: User) -> dict:
     }
 
 
+def _resolve_nested_agents(agent_config: dict, db: Session, current_user: User) -> dict:
+    """If the agent has agent_tool_ids in advanced_config, load those agents and attach as nested_agents."""
+    adv = agent_config.get("advanced_config") or {}
+    raw_ids = adv.get("agent_tool_ids") or []
+    if not raw_ids:
+        return agent_config
+
+    nested: list = []
+    seen = set()
+    for raw in raw_ids:
+        try:
+            aid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if aid in seen or aid == agent_config.get("id"):
+            continue
+        seen.add(aid)
+        sub = db.query(Agent).filter(Agent.id == aid).first()
+        if not sub:
+            continue
+        # Permission: own agents or public
+        if sub.owner_id != current_user.id and not getattr(sub, "is_public", False):
+            continue
+        sub_cfg = _build_agent_config(sub, current_user)
+        # Prevent immediate re-nesting of the same set unless explicitly desired
+        nested.append(sub_cfg)
+
+    if nested:
+        agent_config["nested_agents"] = nested
+    return agent_config
+
+
+
+
 @router.post("/{agent_id}/run", response_model=RunResponse)
 async def run_agent_endpoint(
     agent_id: int,
@@ -57,6 +91,7 @@ async def run_agent_endpoint(
         raise HTTPException(status_code=402, detail="Insufficient credits to run agent")
 
     agent_config = _build_agent_config(agent, current_user)
+    agent_config = _resolve_nested_agents(agent_config, db, current_user)
     # Resolve any saved MCP server references in tools_config
     try:
         agent_config["tools_config"] = await mcp_service.resolve_tools_config(
@@ -145,6 +180,7 @@ async def stream_agent_endpoint(
         raise HTTPException(status_code=402, detail="Insufficient credits to run agent")
 
     agent_config = _build_agent_config(agent, current_user)
+    agent_config = _resolve_nested_agents(agent_config, db, current_user)
     # Resolve any saved MCP server references in tools_config
     try:
         agent_config["tools_config"] = await mcp_service.resolve_tools_config(

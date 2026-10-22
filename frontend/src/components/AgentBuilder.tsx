@@ -102,6 +102,29 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [planningEnabled, setPlanningEnabled] = useState<boolean>(initial?.advanced_config?.planning_enabled ?? false);
   const [reflectEnabled, setReflectEnabled] = useState<boolean>(initial?.advanced_config?.reflection_enabled ?? false);
   const [maxReflections, setMaxReflections] = useState<number>(initial?.advanced_config?.max_reflections ?? 2);
+  const [agentToolIds, setAgentToolIds] = useState<number[]>(initial?.advanced_config?.agent_tool_ids || []);
+  const [availableAgents, setAvailableAgents] = useState<{id: number; name: string; description?: string}[]>([]);
+  // Load available agents for Agent-as-Tool binding
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (!token) return;
+    fetch(`${API_BASE}/agents/`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setAvailableAgents(
+            data
+              .filter((a: any) => a.id !== initial?.id) // exclude self
+              .map((a: any) => ({ id: a.id, name: a.name, description: a.description }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, [initial?.id]);
+
+
   const [structuredEnabled, setStructuredEnabled] = useState<boolean>(initial?.advanced_config?.structured_output_enabled ?? false);
   const [outputSchemaText, setOutputSchemaText] = useState<string>(
     initial?.advanced_config?.output_schema ? JSON.stringify(initial.advanced_config.output_schema, null, 2) : '{\n  "type": "object",\n  "properties": {\n    "answer": { "type": "string" },\n    "confidence": { "type": "number" }\n  },\n  "required": ["answer"]\n}'
@@ -176,6 +199,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       planning_enabled: planningEnabled,
       reflection_enabled: reflectEnabled,
       max_reflections: maxReflections,
+      agent_tool_ids: agentToolIds,
     },
   });
 
@@ -215,6 +239,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
           structured_output_enabled: structuredEnabled,
           output_schema: (() => { try { return JSON.parse(outputSchemaText || "{}"); } catch { return null; } })(),
           tool_choice: toolChoice,
+          agent_tool_ids: agentToolIds,
         },
         tools: serializeTools(),
       },
@@ -269,6 +294,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       setAutonomyLevel(ex.autonomy_level ?? "supervised");
       setSandboxEnabled(Boolean(ex.sandbox_enabled));
       setPlanningEnabled(Boolean(ex.planning_enabled ?? (ex.autonomy_level && ex.autonomy_level !== "supervised")));
+      if (Array.isArray(ex.agent_tool_ids)) setAgentToolIds(ex.agent_tool_ids.map(Number).filter(Boolean));
       setReflectEnabled(Boolean(ex.reflection_enabled));
       setMaxReflections(Number(ex.max_reflections ?? 2));
       const t = Array.isArray(doc.tools) ? doc.tools : [];
@@ -623,6 +649,39 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <input type="checkbox" checked={sandboxEnabled} onChange={(e) => setSandboxEnabled(e.target.checked)} />
                     <span className="font-mono text-xs">sandbox: code, terminal &amp; files (Docker-isolated)</span>
                   </label>
+                  <div className="w-full mt-2 border-t pt-3">
+                    <p className="text-sm font-medium mb-1">Agent-as-Tool</p>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Bind other agents as callable tools. The agent can delegate subtasks to them (max nesting depth 3).
+                    </p>
+                    <div className="max-h-48 overflow-y-auto space-y-1 border rounded p-2 bg-muted/20">
+                      {availableAgents.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No other agents found. Create agents first.</p>
+                      ) : (
+                        availableAgents.map((a) => (
+                          <label key={a.id} className="flex items-start gap-2 text-xs cursor-pointer hover:bg-muted/50 p-1 rounded">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={agentToolIds.includes(a.id)}
+                              onChange={(e) => {
+                                setAgentToolIds((prev) =>
+                                  e.target.checked ? [...prev, a.id] : prev.filter((id) => id !== a.id)
+                                );
+                              }}
+                            />
+                            <span>
+                              <strong>{a.name}</strong>
+                              {a.description && <span className="text-muted-foreground"> — {a.description.slice(0, 80)}</span>}
+                            </span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                    {agentToolIds.length > 0 && (
+                      <p className="text-xs mt-1 text-emerald-600">{agentToolIds.length} agent(s) bound as tools</p>
+                    )}
+                  </div>
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" checked={planningEnabled} onChange={(e) => setPlanningEnabled(e.target.checked)} />
                     <span className="font-mono text-xs">planning: long-horizon plan → act → verify</span>

@@ -91,6 +91,13 @@ Open http://localhost:3000
 - **Agent Builder**: Structured visual builder for MCP tools (add/remove servers), memory settings, and multi-agent workflows (sequential / supervisor / parallel with dynamic sub-agents)
 - Enhanced Agent Runner UI: live token streaming, tool call / tool result visualization, optional thread_id for conversation memory, conversation history list with one-click thread resume
 
+## Agent-as-Tool (Nested Agent Invocation)
+- Agents can bind other owned or public agents as callable tools via `advanced_config.agent_tool_ids`.
+- In the Agent Builder, select agents under "Agent-as-Tool".
+- Runtime creates LangChain tools that invoke the target agent (isolated thread, final output only).
+- Hard nesting depth limit of 3 to prevent infinite recursion.
+- Nested runs appear as normal tool calls / results in the parent stream.
+
 ## Next Priorities
 1. ~~Ratings display in marketplace UI + advanced marketplace filters~~ (Done)
 2. ~~Evaluation dashboard and batch evaluation harness~~ (Done: batch endpoint + basic)
