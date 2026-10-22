@@ -72,6 +72,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [maxMessages, setMaxMessages] = useState<number>(initial?.memory_config?.max_messages ?? 20);
   const [longtermEnabled, setLongtermEnabled] = useState(initial?.memory_config?.longterm_enabled ?? false);
   const [longtermK, setLongtermK] = useState<number>(initial?.memory_config?.longterm_k ?? 5);
+  const [sharedMemory, setSharedMemory] = useState(initial?.memory_config?.shared ?? false);
   const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "hierarchical">(
     initial?.workflow_config?.type || "single"
   );
@@ -163,6 +164,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       type: longtermEnabled ? "hybrid" : "window",
       longterm_enabled: longtermEnabled,
       longterm_k: longtermK,
+      shared: sharedMemory,
     },
     workflow_config: buildWorkflowConfig(),
     max_steps: maxSteps,
@@ -198,7 +200,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
         memory: {
           enabled: memoryEnabled,
           max_messages: maxMessages,
-          longterm: { enabled: longtermEnabled, k: longtermK },
+          longterm: { enabled: longtermEnabled, k: longtermK, shared: sharedMemory },
         },
         workflow: buildWorkflowConfig(),
         execution: {
@@ -232,6 +234,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       setMaxMessages(Number(mem.max_messages ?? 20));
       setLongtermEnabled(mem.longterm?.enabled ?? false);
       setLongtermK(Number(mem.longterm?.k ?? 5));
+      setSharedMemory(!!mem.longterm?.shared);
       const wf = doc.workflow || {};
       const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "hierarchical"];
       if (wf.type && types.includes(wf.type)) setWorkflowType(wf.type);
@@ -652,6 +655,19 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                   <label htmlFor="longterm" className="text-sm">
                     Enable long-term semantic memory (vector store)
                   </label>
+                  {longtermEnabled && (
+                    <div className="flex items-center gap-2 ml-6">
+                      <input
+                        type="checkbox"
+                        id="shared-memory"
+                        checked={sharedMemory}
+                        onChange={(e) => setSharedMemory(e.target.checked)}
+                      />
+                      <label htmlFor="shared-memory" className="text-sm text-muted-foreground">
+                        Share memory across multi-agent team (hierarchical / supervisor)
+                      </label>
+                    </div>
+                  )}
                   {longtermEnabled && (
                     <div className="flex items-center gap-2 ml-6 text-sm">
                       <span>Retrieve k:</span>

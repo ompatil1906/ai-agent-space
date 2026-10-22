@@ -2,7 +2,8 @@
 Long-term semantic memory service using ChromaDB + OpenAI embeddings.
 
 Stores per-agent / per-user memories and retrieves relevant ones for injection
-into agent context. Gracefully degrades if embeddings or Chroma are unavailable.
+into agent context. Supports optional shared team/workflow namespaces for
+multi-agent collaboration. Gracefully degrades if embeddings or Chroma are unavailable.
 """
 from __future__ import annotations
 
@@ -55,14 +56,28 @@ class LongTermMemoryService:
     def available(self) -> bool:
         return self._available
 
+    def _namespace_key(self, agent_id: int, user_id: int, shared_namespace: Optional[str] = None) -> Dict[str, Any]:
+        """Build the metadata filter for a memory namespace."""
+        base = {"user_id": int(user_id)}
+        if shared_namespace:
+            base["shared_namespace"] = shared_namespace
+        else:
+            base["agent_id"] = int(agent_id)
+        return base
+
     def add_memory(
         self,
         agent_id: int,
         user_id: int,
         text: str,
         metadata: Optional[Dict[str, Any]] = None,
+        shared_namespace: Optional[str] = None,
     ) -> Optional[str]:
-        """Store a memory snippet. Returns the memory id or None if unavailable."""
+        """Store a memory snippet. Returns the memory id or None if unavailable.
+
+        If shared_namespace is provided, the memory is stored under that team/workflow
+        key and is retrievable by any agent in the same namespace (multi-agent sharing).
+        """
         if not self._available or not text or not text.strip():
             return None
         try:
@@ -73,8 +88,13 @@ class LongTermMemoryService:
                 "user_id": int(user_id),
                 **(metadata or {}),
             }
-            # Chroma requires string values in metadata for some versions; convert
-            safe_meta = {k: str(v) if not isinstance(v, (int, float, bool)) else v for k, v in meta.items()}
+            if shared_namespace:
+                meta["shared_namespace"] = shared_namespace
+            # Chroma prefers primitive metadata values
+            safe_meta = {
+                k: str(v) if not isinstance(v, (int, float, bool)) else v
+                for k, v in meta.items()
+            }
             self.collection.add(
                 ids=[mid],
                 embeddings=[emb],
@@ -92,21 +112,22 @@ class LongTermMemoryService:
         user_id: int,
         query: str,
         k: int = 5,
+        shared_namespace: Optional[str] = None,
     ) -> List[str]:
-        """Retrieve the top-k most relevant memory documents for the query."""
+        """Retrieve the top-k most relevant memory documents for the query.
+
+        When shared_namespace is set, searches the shared team memory instead of
+        the individual agent memory.
+        """
         if not self._available or not query or not query.strip():
             return []
         try:
             emb = self.embeddings.embed_query(query)
+            where = self._namespace_key(agent_id, user_id, shared_namespace)
             results = self.collection.query(
                 query_embeddings=[emb],
                 n_results=k,
-                where={
-                    "$and": [
-                        {"agent_id": int(agent_id)},
-                        {"user_id": int(user_id)},
-                    ]
-                },
+                where=where,
             )
             docs = results.get("documents") or [[]]
             return docs[0] if docs else []
@@ -114,49 +135,19 @@ class LongTermMemoryService:
             logger.warning("Failed to retrieve memories: %s", e)
             return []
 
-    def clear_for_agent_user(self, agent_id: int, user_id: int) -> int:
-        """Delete all memories for a given agent+user. Returns count deleted (best-effort)."""
-        if not self._available:
-            return 0
-        try:
-            # Chroma doesn't have a direct count-delete easily; fetch ids then delete
-            results = self.collection.get(
-                where={
-                    "$and": [
-                        {"agent_id": int(agent_id)},
-                        {"user_id": int(user_id)},
-                    ]
-                }
-            )
-            ids = results.get("ids") or []
-            if ids:
-                self.collection.delete(ids=ids)
-            return len(ids)
-        except Exception as e:
-            logger.warning("Failed to clear memories: %s", e)
-            return 0
-
-
-
     def list_memories(
         self,
         agent_id: int,
         user_id: int,
         limit: int = 50,
+        shared_namespace: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """List stored memories for an agent+user with metadata."""
+        """List stored memories for an agent+user (or shared namespace) with metadata."""
         if not self._available:
             return []
         try:
-            results = self.collection.get(
-                where={
-                    "$and": [
-                        {"agent_id": int(agent_id)},
-                        {"user_id": int(user_id)},
-                    ]
-                },
-                limit=limit,
-            )
+            where = self._namespace_key(agent_id, user_id, shared_namespace)
+            results = self.collection.get(where=where, limit=limit)
             memories = []
             ids = results.get("ids") or []
             docs = results.get("documents") or []
@@ -172,15 +163,21 @@ class LongTermMemoryService:
             logger.warning("Failed to list memories: %s", e)
             return []
 
-
-def get_memory_service() -> LongTermMemoryService:
-    global _memory_service
-    if _memory_service is None:
-        _memory_service = LongTermMemoryService()
-    return _memory_service
-
-
-    
+    def clear_for_agent_user(self, agent_id: int, user_id: int, shared_namespace: Optional[str] = None) -> int:
+        """Delete all memories for an agent+user (or shared namespace). Returns count deleted."""
+        if not self._available:
+            return 0
+        try:
+            where = self._namespace_key(agent_id, user_id, shared_namespace)
+            # Chroma delete by where
+            existing = self.collection.get(where=where)
+            ids = existing.get("ids") or []
+            if ids:
+                self.collection.delete(ids=ids)
+            return len(ids)
+        except Exception as e:
+            logger.warning("Failed to clear memories: %s", e)
+            return 0
 
     def summarize_and_store(
         self,
@@ -188,14 +185,17 @@ def get_memory_service() -> LongTermMemoryService:
         user_id: int,
         interaction_text: str,
         llm: Any = None,
+        shared_namespace: Optional[str] = None,
     ) -> Optional[str]:
         """Optionally summarize a long interaction before storing to keep memories dense."""
         if not self._available or not interaction_text or len(interaction_text) < 400:
-            return self.add_memory(agent_id, user_id, interaction_text)
+            return self.add_memory(
+                agent_id, user_id, interaction_text, shared_namespace=shared_namespace
+            )
 
         try:
             from langchain_openai import ChatOpenAI
-            from app.core.config import settings
+
             if llm is None:
                 llm = ChatOpenAI(
                     model="gpt-4o-mini",
@@ -210,8 +210,25 @@ def get_memory_service() -> LongTermMemoryService:
             )
             resp = llm.invoke(summary_prompt)
             summary = getattr(resp, "content", str(resp)) or interaction_text[:500]
-            return self.add_memory(agent_id, user_id, summary, metadata={"type": "summary"})
+            return self.add_memory(
+                agent_id,
+                user_id,
+                summary,
+                metadata={"type": "summary"},
+                shared_namespace=shared_namespace,
+            )
         except Exception as e:
             logger.warning("Summarization failed, storing raw: %s", e)
-            return self.add_memory(agent_id, user_id, interaction_text[:1000])
+            return self.add_memory(
+                agent_id,
+                user_id,
+                interaction_text[:1000],
+                shared_namespace=shared_namespace,
+            )
 
+
+def get_memory_service() -> LongTermMemoryService:
+    global _memory_service
+    if _memory_service is None:
+        _memory_service = LongTermMemoryService()
+    return _memory_service

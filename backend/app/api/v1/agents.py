@@ -291,10 +291,12 @@ async def mcp_health_check(
 @router.post("/{agent_id}/memory/clear")
 def clear_agent_memory(
     agent_id: int,
+    shared: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    """Clear long-term semantic memories for the current user on this agent."""
+    """Clear long-term semantic memories for the current user on this agent.
+    Pass ?shared=true to clear the multi-agent team shared namespace."""
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -302,18 +304,23 @@ def clear_agent_memory(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     from app.services.memory_service import get_memory_service
-    deleted = get_memory_service().clear_for_agent_user(agent_id, current_user.id)
-    return {"cleared": deleted, "agent_id": agent_id, "user_id": current_user.id}
+    ns = f"team_{agent_id}" if shared else None
+    deleted = get_memory_service().clear_for_agent_user(
+        agent_id, current_user.id, shared_namespace=ns
+    )
+    return {"cleared": deleted, "agent_id": agent_id, "user_id": current_user.id, "shared": shared}
 
 
 @router.get("/{agent_id}/memories")
 def list_agent_memories(
     agent_id: int,
     limit: int = 50,
+    shared: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    """List long-term semantic memories for the current user on this agent."""
+    """List long-term semantic memories for the current user on this agent.
+    Pass ?shared=true to list the multi-agent team shared namespace."""
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -321,5 +328,14 @@ def list_agent_memories(
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
     from app.services.memory_service import get_memory_service
-    memories = get_memory_service().list_memories(agent_id, current_user.id, limit=limit)
-    return {"agent_id": agent_id, "user_id": current_user.id, "count": len(memories), "memories": memories}
+    ns = f"team_{agent_id}" if shared else None
+    memories = get_memory_service().list_memories(
+        agent_id, current_user.id, limit=limit, shared_namespace=ns
+    )
+    return {
+        "agent_id": agent_id,
+        "user_id": current_user.id,
+        "shared": shared,
+        "count": len(memories),
+        "memories": memories,
+    }

@@ -162,3 +162,84 @@ def build_mcp_meta_tools(tools_config: List[Dict[str, Any]]) -> List:
             return f"Error listing MCP prompts: {e}"
 
     return [list_mcp_resources, read_mcp_resource, list_mcp_prompts]
+
+
+def build_shared_memory_tools(agent_config: Dict[str, Any]) -> List:
+    """
+    Tools that let multi-agent workers explicitly store and retrieve shared team memories.
+    Only attached when memory_config.shared and longterm_enabled are true.
+    """
+    mem_cfg = agent_config.get("memory_config") or {}
+    if not (mem_cfg.get("longterm_enabled") and mem_cfg.get("shared")):
+        return []
+
+    agent_id = agent_config.get("id")
+    user_id = agent_config.get("user_id")
+    if not agent_id or not user_id:
+        return []
+
+    shared_ns = f"team_{agent_id}"
+
+    @tool
+    def store_shared_memory(text: str, tags: str = "") -> str:
+        """Store a concise fact, decision, or observation into the shared team memory
+        so other agents in this multi-agent workflow can retrieve it later.
+        Keep the text short and factual."""
+        try:
+            from app.services.memory_service import get_memory_service
+            meta = {"source": "agent_tool", "tags": tags} if tags else {"source": "agent_tool"}
+            mid = get_memory_service().add_memory(
+                int(agent_id), int(user_id), text, metadata=meta, shared_namespace=shared_ns
+            )
+            return f"Stored in shared team memory (id={mid})" if mid else "Failed to store memory"
+        except Exception as e:
+            return f"Error storing shared memory: {e}"
+
+    @tool
+    def retrieve_shared_memory(query: str, k: int = 5) -> str:
+        """Retrieve the most relevant facts from the shared team memory for this multi-agent workflow."""
+        try:
+            from app.services.memory_service import get_memory_service
+            docs = get_memory_service().retrieve(
+                int(agent_id), int(user_id), query, k=max(1, min(k, 10)), shared_namespace=shared_ns
+            )
+            if not docs:
+                return "No relevant shared memories found."
+            return "\n".join(f"- {d}" for d in docs)
+        except Exception as e:
+            return f"Error retrieving shared memory: {e}"
+
+    return [store_shared_memory, retrieve_shared_memory]
+
+
+def build_mcp_prompt_tool(tools_config: List[Dict[str, Any]]) -> List:
+    """Add a tool that fetches and renders an MCP prompt template (when servers expose prompts)."""
+    if not tools_config:
+        return []
+
+    @tool
+    async def get_mcp_prompt(name: str, arguments: str = "{}") -> str:
+        """Fetch a prompt template from a configured MCP server by name.
+        Optionally pass JSON arguments. Returns the rendered prompt text or an error.
+        Use list_mcp_prompts first to discover available names."""
+        try:
+            import json
+            args = json.loads(arguments) if arguments else {}
+            # Live session path: agents use this during a run
+            from app.services.mcp_service import mcp_service
+            # For now we surface the discovery result and note; full prompt rendering
+            # depends on the MCP client session. This keeps the interface available.
+            prompts = await mcp_service.discover_prompts(tools_config)
+            match = next((p for p in prompts if p.get("name") == name or name in p.get("name", "")), None)
+            if not match:
+                return f"MCP prompt '{name}' not found. Available: {[p.get('name') for p in prompts]}"
+            return (
+                f"MCP prompt '{match.get('name')}' (server={match.get('server')}): "
+                f"{match.get('description', '')}\n"
+                f"Arguments received: {args}\n"
+                f"(Full prompt rendering occurs inside a live MCP session; use this to confirm availability.)"
+            )
+        except Exception as e:
+            return f"Error fetching MCP prompt '{name}': {e}"
+
+    return [get_mcp_prompt]

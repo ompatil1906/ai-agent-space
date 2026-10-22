@@ -274,7 +274,11 @@ def get_enhanced_system_prompt(
     agent_config: Dict[str, Any],
     state: AgentState,
 ) -> str:
-    """Inject relevant long-term memories into the system prompt when enabled."""
+    """Inject relevant long-term memories into the system prompt when enabled.
+
+    Supports shared team/workflow memory when memory_config.shared is true
+    (useful for multi-agent hierarchical/supervisor patterns).
+    """
     prompt = _base_system_prompt(base_prompt, agent_config)
 
     mem_cfg = agent_config.get("memory_config") or {}
@@ -295,14 +299,22 @@ def get_enhanced_system_prompt(
     if not query:
         return prompt
 
+    shared_ns = None
+    if mem_cfg.get("shared"):
+        # Shared namespace keyed by the root agent id so all specialists in a workflow can share
+        shared_ns = f"team_{agent_id}"
+
     try:
         from app.services.memory_service import get_memory_service
         k = int(mem_cfg.get("longterm_k", 5))
-        memories = get_memory_service().retrieve(int(agent_id), int(user_id), query, k=k)
+        memories = get_memory_service().retrieve(
+            int(agent_id), int(user_id), query, k=k, shared_namespace=shared_ns
+        )
         if not memories:
             return prompt
+        label = "Relevant shared team memories" if shared_ns else "Relevant long-term memories"
         mem_block = "\n".join(f"- {m}" for m in memories)
-        return f"{prompt}\n\nRelevant long-term memories (use if helpful):\n{mem_block}"
+        return f"{prompt}\n\n{label} (use if helpful):\n{mem_block}"
     except Exception as e:
         logger.debug("Long-term memory retrieval skipped: %s", e)
         return prompt
@@ -331,6 +343,48 @@ def store_interaction_memory(
             svc.add_memory(int(agent_id), int(user_id), text, metadata={"source": "interaction"})
     except Exception as e:
         logger.debug("Failed to store long-term memory: %s", e)
+
+def store_interaction_memory(
+    agent_config: Dict[str, Any],
+    user_input: str,
+    agent_output: str,
+) -> None:
+    """Persist a short interaction summary as long-term memory.
+
+    When memory_config.shared is true, stores under a team namespace so other
+    agents in the same multi-agent workflow can retrieve it.
+    """
+    mem_cfg = agent_config.get("memory_config") or {}
+    if not mem_cfg.get("longterm_enabled"):
+        return
+    agent_id = agent_config.get("id")
+    user_id = agent_config.get("user_id")
+    if not agent_id or not user_id or not user_input or not agent_output:
+        return
+
+    shared_ns = None
+    if mem_cfg.get("shared"):
+        shared_ns = f"team_{agent_id}"
+
+    try:
+        from app.services.memory_service import get_memory_service
+        text = f"User: {user_input[:800]}\nAssistant: {agent_output[:1500]}"
+        svc = get_memory_service()
+        if len(text) > 600 and hasattr(svc, "summarize_and_store"):
+            svc.summarize_and_store(
+                int(agent_id), int(user_id), text, shared_namespace=shared_ns
+            )
+        else:
+            svc.add_memory(
+                int(agent_id),
+                int(user_id),
+                text,
+                metadata={"source": "interaction"},
+                shared_namespace=shared_ns,
+            )
+    except Exception as e:
+        logger.debug("Failed to store long-term memory: %s", e)
+
 
 
 
@@ -1087,8 +1141,13 @@ async def _load_tools(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
     if mcp_config:
         agent_tools.extend(await mcp_service.get_tools(mcp_config) or [])
         # Add live MCP resource & prompt tools so agents can discover and read context
-        from app.agents.tools import build_mcp_meta_tools
+        from app.agents.tools import build_mcp_meta_tools, build_mcp_prompt_tool
         agent_tools.extend(build_mcp_meta_tools(mcp_config))
+        agent_tools.extend(build_mcp_prompt_tool(mcp_config))
+
+    # Shared multi-agent memory tools (when enabled)
+    from app.agents.tools import build_shared_memory_tools
+    agent_tools.extend(build_shared_memory_tools(agent_config))
 
     if agent_config.get("sandbox_enabled"):
         from app.agents.tools import build_sandbox_tools
