@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { dump as yamlDump, load as yamlLoad } from "js-yaml";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,6 +68,8 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [modelName, setModelName] = useState(initial?.model_name || "gpt-4o-mini");
   const [temperature, setTemperature] = useState(initial?.temperature || 0.7);
   const [tools, setTools] = useState<ToolConfig[]>(initial?.tools_config || []);
+  const [registeredServers, setRegisteredServers] = useState<any[]>([]);
+  const [selectedServerId, setSelectedServerId] = useState<string>("");
   const [memoryEnabled, setMemoryEnabled] = useState(initial?.memory_config?.enabled ?? true);
   const [maxMessages, setMaxMessages] = useState<number>(initial?.memory_config?.max_messages ?? 20);
   const [longtermEnabled, setLongtermEnabled] = useState(initial?.memory_config?.longterm_enabled ?? false);
@@ -290,6 +292,44 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const addTool = () => {
     setTools([...tools, { name: `tool_${tools.length + 1}`, transport: "stdio", command: "python", args: [] }]);
   };
+
+  const loadRegisteredServers = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      const res = await fetch(`${API_BASE}/mcp-servers/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setRegisteredServers(await res.json());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const addRegisteredServer = () => {
+    const id = parseInt(selectedServerId, 10);
+    const server = registeredServers.find((s) => s.id === id);
+    if (!server) return;
+    // Store as server_id reference (resolved at runtime) plus name for UI
+    setTools([
+      ...tools,
+      {
+        name: server.name,
+        transport: server.config?.transport || "stdio",
+        // @ts-ignore - extra field for resolution
+        server_id: server.id,
+        ...(server.config || {}),
+      } as any,
+    ]);
+    setSelectedServerId("");
+  };
+
+  // Load registered servers on mount
+  useEffect(() => {
+    loadRegisteredServers();
+  }, []);
 
   const updateTool = (index: number, updates: Partial<ToolConfig>) => {
     const next = [...tools];
@@ -820,6 +860,25 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <Button type="button" size="sm" variant="outline" onClick={addTool}>
                       Add MCP Server
                     </Button>
+                    {registeredServers.length > 0 && (
+                      <div className="flex gap-2 items-center">
+                        <Select value={selectedServerId} onValueChange={setSelectedServerId}>
+                          <SelectTrigger className="w-[200px]">
+                            <SelectValue placeholder="From registry..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {registeredServers.map((s) => (
+                              <SelectItem key={s.id} value={String(s.id)}>
+                                {s.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" size="sm" variant="secondary" onClick={addRegisteredServer} disabled={!selectedServerId}>
+                          Add
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
                 {validationResult && (

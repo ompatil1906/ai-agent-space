@@ -8,6 +8,7 @@ import { cn } from "cn";
 const NAV_LINKS = [
   { href: "/agents", label: "Agents" },
   { href: "/marketplace", label: "Marketplace" },
+  { href: "/mcp-servers", label: "MCP Servers" },
   { href: "/dashboard", label: "Dashboard" },
 ];
 

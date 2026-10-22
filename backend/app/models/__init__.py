@@ -9,6 +9,7 @@ from app.models.user import (
     CreditTransaction,
     ToolApproval,
     ApiKey,
+    MCPServer,
 )
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "CreditTransaction",
     "ToolApproval",
     "ApiKey",
+    "MCPServer",
 ]

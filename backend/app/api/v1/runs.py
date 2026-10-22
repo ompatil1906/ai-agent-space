@@ -15,6 +15,7 @@ from app.models import Agent, AgentRun, User, AgentEvaluation, CreditTransaction
 from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse, BatchEvaluateRequest, BatchEvaluateResponse, AgentEvaluationPublic, EvaluationSummary
 from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse, BatchEvaluateRequest, BatchEvaluateResponse, AgentEvaluationPublic, EvaluationSummary
 from app.services.sandbox_service import sandbox_service
+from app.services.mcp_service import mcp_service
 
 router = APIRouter()
 
@@ -56,6 +57,13 @@ async def run_agent_endpoint(
         raise HTTPException(status_code=402, detail="Insufficient credits to run agent")
 
     agent_config = _build_agent_config(agent, current_user)
+    # Resolve any saved MCP server references in tools_config
+    try:
+        agent_config["tools_config"] = await mcp_service.resolve_tools_config(
+            agent_config.get("tools_config") or [], db, current_user.id
+        )
+    except Exception:
+        pass  # fall back to original config on resolution failure
     workspace = None
     if agent_config["sandbox_enabled"]:
         workspace = sandbox_service.create_workspace(f"agent-{agent.id}")
@@ -137,6 +145,13 @@ async def stream_agent_endpoint(
         raise HTTPException(status_code=402, detail="Insufficient credits to run agent")
 
     agent_config = _build_agent_config(agent, current_user)
+    # Resolve any saved MCP server references in tools_config
+    try:
+        agent_config["tools_config"] = await mcp_service.resolve_tools_config(
+            agent_config.get("tools_config") or [], db, current_user.id
+        )
+    except Exception:
+        pass  # fall back to original config on resolution failure
     workspace = None
     if agent_config["sandbox_enabled"]:
         workspace = sandbox_service.create_workspace(f"agent-{agent.id}")

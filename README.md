@@ -11,6 +11,9 @@ A modern, advanced platform for creating, configuring, running, and sharing AI a
 
 ## Recent Enhancements (Advanced Session)
 
+- **MCP Server Registry**: Users can register reusable MCP server configurations (stdio / HTTP / SSE). Agents can reference them by `server_id` (resolved at runtime) or via the builder UI. Full CRUD + validate/discover endpoints at `/api/v1/mcp-servers`. Dedicated management page at `/mcp-servers`.
+
+
 - **Workflow Visualizer**: Interactive tree/card view of multi-agent workflows (supervisor, hierarchical, parallel, debate, consensus, map-reduce, sequential) directly on the agent run page. Supports nested teams.
 - **Granular Memory Management**: Individual long-term memory deletion via `DELETE /api/v1/agents/{id}/memories/{memory_id}` plus UI delete buttons. Complements existing list/clear endpoints.
 

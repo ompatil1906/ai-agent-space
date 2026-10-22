@@ -247,3 +247,37 @@ class MCPService:
 
 # Singleton
 mcp_service = MCPService()
+
+
+    async def resolve_tools_config(
+        self,
+        tools_config: List[Dict[str, Any]],
+        db: Any,
+        user_id: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Expand tools_config entries that reference a saved MCP server by id.
+        Entries of the form {"server_id": 123} are replaced with the stored config.
+        Full inline configs are passed through unchanged.
+        """
+        if not tools_config:
+            return []
+
+        from app.models import MCPServer  # local import to avoid circular
+
+        resolved: List[Dict[str, Any]] = []
+        for cfg in tools_config:
+            if isinstance(cfg, dict) and "server_id" in cfg and "transport" not in cfg:
+                server_id = cfg["server_id"]
+                server = (
+                    db.query(MCPServer)
+                    .filter(MCPServer.id == server_id, MCPServer.owner_id == user_id)
+                    .first()
+                )
+                if server and server.config:
+                    resolved.append(server.config)
+                else:
+                    logger.warning("MCP server_id %s not found or not owned by user %s", server_id, user_id)
+            else:
+                resolved.append(cfg)
+        return resolved

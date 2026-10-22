@@ -217,3 +217,20 @@ class ApiKey(Base):
 
 # Register relationship
 User.api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
+
+
+class MCPServer(Base):
+    """User-owned reusable MCP server configuration."""
+    __tablename__ = "mcp_servers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    # Full connection config: {"transport": "stdio"|"streamable_http"|"sse", "command": ..., "args": [...], "url": ..., "headers": {...}}
+    config = Column(JSON, nullable=False)
+    is_public = Column(Boolean, default=False)  # future: shareable MCP servers
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    owner = relationship("User", backref="mcp_servers")

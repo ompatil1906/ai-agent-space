@@ -382,3 +382,32 @@ class ApiKeyPublic(BaseModel):
 class ApiKeyCreateResponse(ApiKeyPublic):
     """Returned only on creation — includes the raw key once."""
     raw_key: str
+
+
+# MCP Server Registry schemas
+class MCPServerBase(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: Optional[str] = None
+    config: Dict[str, Any]  # transport, command/args or url, headers, etc.
+    is_public: bool = False
+
+
+class MCPServerCreate(MCPServerBase):
+    pass
+
+
+class MCPServerUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    is_public: Optional[bool] = None
+
+
+class MCPServerPublic(MCPServerBase):
+    id: int
+    owner_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
