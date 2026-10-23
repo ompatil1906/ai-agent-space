@@ -29,7 +29,8 @@ function NodeCard({ title, subtitle, type, children }: { title: string; subtitle
     type === "supervisor" || type === "hierarchical" ? "border-blue-500" :
     type === "parallel" || type === "map_reduce" ? "border-purple-500" :
     type === "debate" || type === "consensus" ? "border-orange-500" :
-    type === "sequential" ? "border-green-500" : "border-gray-400";
+    type === "sequential" ? "border-green-500" :
+    type === "plan_execute" ? "border-teal-500" : "border-gray-400";
 
   return (
     <Card className={`border-2 ${color} shadow-sm`}>
@@ -108,7 +109,8 @@ export default function WorkflowVisualizer({ workflow, agentName = "Agent" }: Wo
           type === "debate" ? "Pro/con debate with moderator synthesis" :
           type === "consensus" ? "Independent specialists + consensus facilitator" :
           type === "map_reduce" ? "Fan-out with Send API then reduce" :
-          type === "sequential" ? "Pass-through chain of specialists" : ""
+          type === "sequential" ? "Pass-through chain of specialists" :
+          type === "plan_execute" ? "Planner creates steps, Executor carries them out with tools" : ""
         }
         type={type}
       >

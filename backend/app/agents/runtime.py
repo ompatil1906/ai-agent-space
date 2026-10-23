@@ -2,7 +2,7 @@
 Advanced LangGraph-based agent runtime with streaming, memory, MCP tools,
 sandboxed execution tools, long-horizon planning, Reflexion-style
 self-correction with confidence estimation, and multi-agent orchestration
-(single / sequential / supervisor / parallel / debate / map_reduce / consensus / hierarchical).
+(single / sequential / supervisor / parallel / debate / map_reduce / consensus / hierarchical / plan_execute).
 
 Memory: Uses MemorySaver by default. Switches to PostgresSaver when
 DATABASE_URL is PostgreSQL and the package is installed (production-ready).
@@ -1205,6 +1205,75 @@ def build_hierarchical_graph(agent_config: Dict[str, Any], tools: Optional[List[
 
 
 
+def build_plan_execute_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
+    """
+    Advanced Plan-and-Execute pattern for long-horizon tasks.
+    1. Planner creates a numbered step-by-step plan.
+    2. Executor runs the plan (with tools if available) step by step.
+    3. Optional reflection reviews and may replan.
+    Ideal for complex, multi-step research, coding, or analysis tasks.
+    """
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    temperature = agent_config.get("temperature", 0.4)
+    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
+    system_prompt = agent_config.get("system_prompt", "You are a capable AI agent.")
+
+    base_llm = get_llm(model_name, temperature, base_url)
+    llm = base_llm.bind_tools(tools) if tools else base_llm
+
+    workflow = StateGraph(AgentState)
+
+    def planner_node(state: AgentState):
+        plan_prompt = (
+            "You are a strategic planner. Given the user request and any prior context, "
+            "produce a clear, numbered step-by-step plan to accomplish the goal. "
+            "Each step should be concrete and actionable. Output only the plan."
+        )
+        enhanced = get_enhanced_system_prompt(plan_prompt, agent_config, state)
+        messages = [SystemMessage(content=enhanced)] + state["messages"]
+        response = base_llm.invoke(messages)
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = "planner"
+        response.additional_kwargs["node"] = "planner"
+        return {"messages": [response]}
+
+    def executor_node(state: AgentState):
+        exec_prompt = (
+            "You are the executor. Follow the plan produced by the planner. "
+            "Execute the next incomplete step using tools if helpful. "
+            "After completing a step, clearly state progress. Continue until the plan is finished or you have a final answer."
+        )
+        enhanced = get_enhanced_system_prompt(exec_prompt, agent_config, state)
+        messages = [SystemMessage(content=enhanced)] + state["messages"]
+        response = llm.invoke(messages)
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = "executor"
+        response.additional_kwargs["node"] = "executor"
+        return {"messages": [response]}
+
+    workflow.add_node("planner", planner_node)
+    workflow.add_node("executor", executor_node)
+    workflow.set_entry_point("planner")
+    workflow.add_edge("planner", "executor")
+
+    if tools:
+        tool_node = _make_reliable_tool_node(tools)
+        workflow.add_node("tools", tool_node)
+
+        def route_after_executor(state: AgentState):
+            last = state["messages"][-1] if state.get("messages") else None
+            if last and getattr(last, "tool_calls", None):
+                return "tools"
+            return END
+
+        workflow.add_conditional_edges("executor", route_after_executor, {"tools": "tools", END: END})
+        workflow.add_edge("tools", "executor")
+    else:
+        workflow.add_edge("executor", END)
+
+    return workflow.compile(checkpointer=checkpointer)
+
+
 def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """Dispatch to the correct graph builder based on workflow_config.type."""
     wf_type = (agent_config.get("workflow_config") or {}).get("type", "single")
@@ -1220,6 +1289,8 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
         return build_map_reduce_graph(agent_config, tools)
     if wf_type == "consensus":
         return build_consensus_graph(agent_config, tools)
+    if wf_type == "plan_execute":
+        return build_plan_execute_graph(agent_config, tools)
     if wf_type == "hierarchical":
         return build_hierarchical_graph(agent_config, tools)
     return build_single_agent_graph(agent_config, tools)

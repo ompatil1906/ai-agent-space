@@ -75,7 +75,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [longtermEnabled, setLongtermEnabled] = useState(initial?.memory_config?.longterm_enabled ?? false);
   const [longtermK, setLongtermK] = useState<number>(initial?.memory_config?.longterm_k ?? 5);
   const [sharedMemory, setSharedMemory] = useState(initial?.memory_config?.shared ?? false);
-  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "consensus" | "hierarchical">(
+  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "consensus" | "hierarchical" | "plan_execute">(
     initial?.workflow_config?.type || "single"
   );
   const [subAgents, setSubAgents] = useState<SubAgent[]>(() => {
@@ -263,7 +263,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       setLongtermK(Number(mem.longterm?.k ?? 5));
       setSharedMemory(!!mem.longterm?.shared);
       const wf = doc.workflow || {};
-      const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "consensus", "hierarchical"];
+      const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "consensus", "hierarchical", "plan_execute"];
       if (wf.type && types.includes(wf.type)) setWorkflowType(wf.type);
       if (wf.type === "hierarchical" && Array.isArray(wf.teams)) {
         setSubAgents(
@@ -798,6 +798,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <SelectItem value="debate">Debate Multi-Agent (Pro/Con + Judge)</SelectItem>
                     <SelectItem value="map_reduce">Map-Reduce (Parallel Specialists + Synthesizer)</SelectItem>
                     <SelectItem value="hierarchical">Hierarchical (Manager → Teams)</SelectItem>
+                    <SelectItem value="plan_execute">Plan <SelectItem value="hierarchical">Hierarchical (Manager → Teams)</SelectItem> Execute (Long-horizon)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
