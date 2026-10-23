@@ -2,7 +2,7 @@
 Advanced LangGraph-based agent runtime with streaming, memory, MCP tools,
 sandboxed execution tools, long-horizon planning, Reflexion-style
 self-correction with confidence estimation, and multi-agent orchestration
-(single / sequential / supervisor / parallel / debate / map_reduce / consensus / hierarchical / plan_execute / ensemble).
+(single / sequential / supervisor / parallel / debate / map_reduce / consensus / hierarchical / plan_execute / ensemble / group_chat).
 
 Memory: Uses MemorySaver by default. Switches to PostgresSaver when
 DATABASE_URL is PostgreSQL and the package is installed (production-ready).
@@ -1361,6 +1361,114 @@ def build_ensemble_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]
     return workflow.compile(checkpointer=checkpointer)
 
 
+
+def build_group_chat_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
+    """
+    Group Chat multi-agent pattern (AutoGen-inspired).
+    Multiple specialist agents take turns in a shared conversation.
+    A selector LLM decides the next speaker or when to conclude.
+    Useful for collaborative problem-solving, brainstorming, and multi-perspective analysis.
+    """
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.output_parsers import StrOutputParser
+
+    wf = agent_config.get("workflow_config") or {}
+    participants = wf.get("sub_agents") or wf.get("workers") or []
+    if not participants:
+        # Fallback to single if no participants defined
+        return build_single_agent_graph(agent_config, tools)
+
+    max_rounds = int(wf.get("max_rounds", 6))
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    temperature = float(agent_config.get("temperature", 0.7))
+
+    # Shared state for the group chat
+    class GroupChatState(TypedDict):
+        messages: Annotated[List[BaseMessage], operator.add]
+        next_speaker: str
+        rounds: int
+        concluded: bool
+
+    llm = ChatOpenAI(model=model_name, temperature=temperature)
+
+    # Selector prompt
+    selector_prompt = ChatPromptTemplate.from_messages([
+        ("system", 
+         "You are the group chat moderator. Participants: {participants}\n"
+         "Based on the conversation so far, decide the next speaker name exactly as listed, "
+         "or reply with 'CONCLUDE' if the discussion has reached a satisfactory conclusion "
+         "or max useful rounds are done.\n"
+         "Reply with ONLY the speaker name or CONCLUDE."),
+        ("human", "{history}"),
+    ])
+    selector = selector_prompt | llm | StrOutputParser()
+
+    def select_next(state: GroupChatState) -> dict:
+        history = "\n".join([f"{m.type}: {m.content}" for m in state["messages"][-12:]])
+        names = [p.get("name", f"agent{i}") for i, p in enumerate(participants)]
+        result = selector.invoke({
+            "participants": ", ".join(names),
+            "history": history or "(start of conversation)",
+        })
+        result = result.strip()
+        if "CONCLUDE" in result.upper() or state["rounds"] >= max_rounds:
+            return {"next_speaker": "CONCLUDE", "concluded": True}
+        # Match best name
+        next_name = next((n for n in names if n.lower() in result.lower()), names[0])
+        return {"next_speaker": next_name, "rounds": state["rounds"] + 1}
+
+    # Build individual participant nodes
+    participant_nodes = {}
+    for p in participants:
+        name = p.get("name", "participant")
+        sys_prompt = p.get("system_prompt", f"You are {name}, a helpful specialist in the group chat.")
+        # Each participant gets a simple ReAct-like response (tools shared if any)
+        def make_node(n=name, prompt=sys_prompt):
+            def node(state: GroupChatState) -> dict:
+                # Only respond if it's their turn
+                if state.get("next_speaker") != n:
+                    return {}
+                msgs = [SystemMessage(content=prompt)] + state["messages"]
+                # Simple invocation (tools can be bound if needed later)
+                resp = llm.invoke(msgs)
+                return {"messages": [AIMessage(content=f"[{n}] {resp.content}")]}
+            return node
+        participant_nodes[name] = make_node()
+
+    def conclude(state: GroupChatState) -> dict:
+        # Final synthesis
+        history = "\n".join([m.content for m in state["messages"] if isinstance(m, AIMessage)])
+        synth = llm.invoke([
+            SystemMessage(content="Synthesize the group discussion into a clear, actionable final answer."),
+            HumanMessage(content=history or "No discussion occurred."),
+        ])
+        return {"messages": [AIMessage(content=f"[CONCLUSION] {synth.content}")]}
+
+    workflow = StateGraph(GroupChatState)
+    workflow.add_node("selector", select_next)
+    for name, node_fn in participant_nodes.items():
+        workflow.add_node(name, node_fn)
+    workflow.add_node("conclude", conclude)
+
+    workflow.set_entry_point("selector")
+
+    # Conditional edges from selector
+    def route(state: GroupChatState):
+        ns = state.get("next_speaker", "")
+        if ns == "CONCLUDE" or state.get("concluded"):
+            return "conclude"
+        return ns if ns in participant_nodes else list(participant_nodes.keys())[0]
+
+    workflow.add_conditional_edges("selector", route, {**{n: n for n in participant_nodes}, "conclude": "conclude"})
+    # After each participant, go back to selector
+    for name in participant_nodes:
+        workflow.add_edge(name, "selector")
+    workflow.add_edge("conclude", END)
+
+    checkpointer = MemorySaver()  # or the production one from elsewhere
+    return workflow.compile(checkpointer=checkpointer)
+
+
 def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """Dispatch to the correct graph builder based on workflow_config.type."""
     wf_type = (agent_config.get("workflow_config") or {}).get("type", "single")
@@ -1382,6 +1490,8 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
         return build_hierarchical_graph(agent_config, tools)
     if wf_type == "ensemble":
         return build_ensemble_graph(agent_config, tools)
+    if wf_type == "group_chat":
+        return build_group_chat_graph(agent_config, tools)
     return build_single_agent_graph(agent_config, tools)
 
 

@@ -89,6 +89,18 @@ const TEMPLATES = [
       },
     ],
   },
+  {
+    name: "Collaborative Group Chat",
+    description: "Multi-specialist discussion with moderator-driven turns until conclusion",
+    system_prompt: "You are facilitating a group of specialists who discuss the problem collaboratively.",
+    model_name: "gpt-4o-mini",
+    workflow_type: "group_chat" as const,
+    sub_agents: [
+      { name: "Strategist", description: "High-level strategy and framing", system_prompt: "You propose strategic approaches and high-level framing of the problem." },
+      { name: "Critic", description: "Identifies risks and flaws", system_prompt: "You critically examine proposals, pointing out risks, missing pieces, and potential failure modes." },
+      { name: "Implementer", description: "Practical next steps", system_prompt: "You turn ideas into concrete, actionable implementation steps." },
+    ],
+  },
 ];
 
 const DEFAULT_PROMPT = "You are a helpful AI assistant. You have access to tools when configured.";
@@ -107,7 +119,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [longtermEnabled, setLongtermEnabled] = useState(initial?.memory_config?.longterm_enabled ?? false);
   const [longtermK, setLongtermK] = useState<number>(initial?.memory_config?.longterm_k ?? 5);
   const [sharedMemory, setSharedMemory] = useState(initial?.memory_config?.shared ?? false);
-  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "consensus" | "hierarchical" | "plan_execute" | "ensemble">(
+  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "consensus" | "hierarchical" | "plan_execute" | "ensemble" | "group_chat">(
     initial?.workflow_config?.type || "single"
   );
   const [subAgents, setSubAgents] = useState<SubAgent[]>(() => {
@@ -295,7 +307,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       setLongtermK(Number(mem.longterm?.k ?? 5));
       setSharedMemory(!!mem.longterm?.shared);
       const wf = doc.workflow || {};
-      const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "consensus", "hierarchical", "plan_execute", "ensemble"];
+      const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "consensus", "hierarchical", "plan_execute", "ensemble", "group_chat"];
       if (wf.type && types.includes(wf.type)) setWorkflowType(wf.type);
       if (wf.type === "hierarchical" && Array.isArray(wf.teams)) {
         setSubAgents(
@@ -835,6 +847,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <SelectItem value="debate">Debate Multi-Agent (Pro/Con + Judge)</SelectItem>
                     <SelectItem value="map_reduce">Map-Reduce (Parallel Specialists + Synthesizer)</SelectItem>
                     <SelectItem value="ensemble">Ensemble (Confidence-Weighted Specialists)</SelectItem>
+                    <SelectItem value="group_chat">Group Chat (Collaborative Discussion)</SelectItem>
                     <SelectItem value="hierarchical">Hierarchical (Manager → Teams)</SelectItem>
                     <SelectItem value="plan_execute">Plan-Execute (Long-horizon Planning)</SelectItem>
                   </SelectContent>
@@ -845,7 +858,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 <div className="space-y-4 rounded-lg border border-border p-4">
                   <div className="flex justify-between items-center">
                     <h3 className="font-mono text-sm text-muted-foreground uppercase">
-                      {workflowType === "hierarchical" ? "Teams (Manager → Teams)" : (workflowType === "map_reduce" || workflowType === "ensemble") ? "Specialists (Parallel)" : "Sub-Agents / Workers"}
+                      {workflowType === "hierarchical" ? "Teams (Manager → Teams)" : (workflowType === "map_reduce" || workflowType === "ensemble") ? "Specialists (Parallel)" : workflowType === "group_chat" ? "Participants (Group Chat)" : "Sub-Agents / Workers"}
                     </h3>
                     <Button type="button" size="sm" variant="outline" onClick={addSubAgent}>
                       {workflowType === "hierarchical" ? "Add Team" : "Add Sub-Agent"}
