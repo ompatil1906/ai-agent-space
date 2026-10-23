@@ -23,8 +23,8 @@ export default function MultiAgentTimeline({ events, className = "" }: MultiAgen
   const grouped = useMemo(() => {
     const map = new Map<string, StreamEvent[]>();
     for (const ev of events) {
-      if (ev.type === "agent_step" || ev.type === "thought" || ev.type === "reflection") {
-        const key = ev.agent || "main";
+      if (["agent_step", "thought", "reflection", "tool_call", "tool_result", "confidence"].includes(ev.type)) {
+        const key = ev.agent || (ev.type.startsWith("tool") ? "tools" : "main");
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(ev);
       }
@@ -57,11 +57,14 @@ export default function MultiAgentTimeline({ events, className = "" }: MultiAgen
         {grouped.map(([agent, steps]) => (
           <div key={agent} className="border-l-2 border-primary/40 pl-3">
             <div className="font-mono text-xs font-semibold text-primary mb-1">{agent}</div>
-            {steps.slice(-4).map((step, i) => (
+            {steps.slice(-6).map((step, i) => (
               <div key={i} className="text-xs text-muted-foreground mb-1 whitespace-pre-wrap">
-                {step.type === "reflection" ? "⟳ " : ""}
-                {(step.content || "").slice(0, 280)}
-                {(step.content || "").length > 280 ? "…" : ""}
+                {step.type === "reflection" && "⟳ "}
+                {step.type === "tool_call" && `🔧 ${step.name || "tool"} `}
+                {step.type === "tool_result" && "✓ "}
+                {step.type === "confidence" && "★ "}
+                {(step.content || JSON.stringify(step.args || "") || "").slice(0, 240)}
+                {(step.content || "").length > 240 ? "…" : ""}
               </div>
             ))}
           </div>

@@ -13,6 +13,12 @@ import { API_BASE } from "@/lib/api";
 import WorkflowVisualizer from "@/components/WorkflowVisualizer";
 
 interface StreamEvent {
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    estimated_cost_usd: number;
+  };
   type: "token" | "tool_call" | "tool_result" | "agent_step" | "reflection" | "confidence" | "done" | "error" | "approval_required" | "thought";
   content?: string;
   name?: string;
@@ -45,6 +51,7 @@ function AgentRunContent() {
   const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string; events?: StreamEvent[] }[]>([]);
   const [threads, setThreads] = useState<any[]>([]);
   const [finalConfidence, setFinalConfidence] = useState<number | null>(null);
+  const [runUsage, setRunUsage] = useState<{input_tokens: number; output_tokens: number; total_tokens: number; estimated_cost_usd: number} | null>(null);
   const [runs, setRuns] = useState<any[]>([]);
   const [selectedRun, setSelectedRun] = useState<any>(null);
   const [pendingApprovals, setPendingApprovals] = useState<Record<string, {name: string; args: any}>>({});
@@ -225,6 +232,7 @@ function AgentRunContent() {
     setEvents([]);
     setFinalOutput("");
     setFinalConfidence(null);
+    setRunUsage(null);
     abortControllerRef.current = new AbortController();
 
     // Append user turn immediately
@@ -360,6 +368,7 @@ function AgentRunContent() {
     setEvents([]);
     setFinalOutput("");
     setFinalConfidence(null);
+    setRunUsage(null);
   };
 
   const loadThread = async (tid: string) => {
@@ -601,6 +610,19 @@ function AgentRunContent() {
       <Card className="mb-6">
         <CardHeader>
           <MultiAgentTimeline events={events} className="mb-4" />
+          {runUsage && (
+            <div className="mb-3 flex flex-wrap gap-2 text-xs font-mono">
+              <Badge variant="outline">tokens: {runUsage.total_tokens}</Badge>
+              <Badge variant="outline">in: {runUsage.input_tokens}</Badge>
+              <Badge variant="outline">out: {runUsage.output_tokens}</Badge>
+              <Badge variant="secondary">est. cost: ${runUsage.estimated_cost_usd.toFixed(5)}</Badge>
+            </div>
+          )}
+          {!runUsage && finalOutput && (
+            <div className="mb-3 text-xs font-mono text-muted-foreground">
+              approx tokens: ~{Math.round(finalOutput.length / 4)}
+            </div>
+          )}
           <CardTitle className="font-mono text-sm text-muted-foreground">live tool calls & events</CardTitle>
         </CardHeader>
         <CardContent>

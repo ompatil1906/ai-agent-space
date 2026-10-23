@@ -1,3 +1,7 @@
+## Latest Observability Enhancement
+- **Live Token & Cost Tracking in Agent Runner**: During and after streaming runs, the agent page now displays exact input/output/total tokens and estimated USD cost (from the `done` event usage payload). Falls back to approximate token count from output length while streaming. Complements the dashboard cost analytics.
+- **Richer Multi-Agent Timeline**: Timeline now groups tool calls, tool results, confidence, and reflections per agent (or tools bucket), with clearer icons and more context.
+
 
 ## Latest Observability Enhancement
 - **Token Usage & Cost Analytics**: Dashboard now aggregates total input/output tokens, estimated USD cost, and average cost per run from all AgentRun records. Provides clear cost visibility for multi-agent and long-running workflows.
