@@ -1,4 +1,7 @@
 ## Latest Enhancement
+- **Swarm Multi-Agent Pattern**: New `swarm` workflow type. Specialists can dynamically hand off control to each other by emitting `HANDOFF: agent_name`. Useful for flexible, agent-driven collaboration. Available in the Agent Builder and runtime.
+
+## Latest Enhancement
 - **Group Chat Multi-Agent Pattern**: New `group_chat` workflow type (AutoGen-inspired). Multiple specialists discuss collaboratively; a moderator LLM selects the next speaker or concludes the discussion. Final synthesis is produced. Available in the Agent Builder (with template) and runtime.
 - **Ensemble Multi-Agent Pattern**: New `ensemble` workflow type. Specialists run in parallel and report self-assessed confidence scores. A synthesizer produces a confidence-weighted final answer, explicitly noting disagreements. Available in the Agent Builder and runtime.
 

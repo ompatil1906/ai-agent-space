@@ -127,8 +127,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [longtermEnabled, setLongtermEnabled] = useState(initial?.memory_config?.longterm_enabled ?? false);
   const [longtermK, setLongtermK] = useState<number>(initial?.memory_config?.longterm_k ?? 5);
   const [sharedMemory, setSharedMemory] = useState(initial?.memory_config?.shared ?? false);
-  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "consensus" | "hierarchical" | "plan_execute" | "ensemble" | "group_chat" | "critique_revise">(
-    initial?.workflow_config?.type || "single"
+  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "consensus" | "hierarchical" | "plan_execute" | "ensemble" | "group_chat" | "critique_revise" | "swarm">(    initial?.workflow_config?.type || "single"
   );
   const [subAgents, setSubAgents] = useState<SubAgent[]>(() => {
     const wf = initial?.workflow_config || {};
@@ -315,8 +314,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       setLongtermK(Number(mem.longterm?.k ?? 5));
       setSharedMemory(!!mem.longterm?.shared);
       const wf = doc.workflow || {};
-      const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "consensus", "hierarchical", "plan_execute", "ensemble", "group_chat", "critique_revise"];
-      if (wf.type && types.includes(wf.type)) setWorkflowType(wf.type);
+      const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "consensus", "hierarchical", "plan_execute", "ensemble", "group_chat", "critique_revise", "swarm"];      if (wf.type && types.includes(wf.type)) setWorkflowType(wf.type);
       if (wf.type === "hierarchical" && Array.isArray(wf.teams)) {
         setSubAgents(
           wf.teams.map((t: any) => ({
@@ -857,6 +855,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <SelectItem value="ensemble">Ensemble (Confidence-Weighted Specialists)</SelectItem>
                     <SelectItem value="group_chat">Group Chat (Collaborative Discussion)</SelectItem>
                     <SelectItem value="critique_revise">Critique-Revise (Generator → Critic → Reviser loop)</SelectItem>
+                    <SelectItem value="swarm">Swarm (Dynamic Handoffs)</SelectItem>
                     <SelectItem value="hierarchical">Hierarchical (Manager → Teams)</SelectItem>
                     <SelectItem value="plan_execute">Plan-Execute (Long-horizon Planning)</SelectItem>
                   </SelectContent>

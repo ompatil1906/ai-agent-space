@@ -2,8 +2,7 @@
 Advanced LangGraph-based agent runtime with streaming, memory, MCP tools,
 sandboxed execution tools, long-horizon planning, Reflexion-style
 self-correction with confidence estimation, and multi-agent orchestration
-(single / sequential / supervisor / parallel / debate / map_reduce / consensus / hierarchical / plan_execute / ensemble / group_chat / critique_revise).
-
+(single / sequential / supervisor / parallel / debate / map_reduce / consensus / hierarchical / plan_execute / ensemble / group_chat / critique_revise / swarm).
 Memory: Uses MemorySaver by default. Switches to PostgresSaver when
 DATABASE_URL is PostgreSQL and the package is installed (production-ready).
 """
@@ -1629,6 +1628,68 @@ def build_critique_revise_graph(agent_config: Dict[str, Any], tools: Optional[Li
     workflow.add_edge("reviser", "critic")
 
     return workflow.compile(checkpointer=checkpointer)
+def build_swarm_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
+    """
+    Swarm multi-agent pattern (OpenAI Swarm / LangGraph inspired).
+    Specialists can dynamically hand off control by ending their response with:
+    HANDOFF: other_agent_name
+    The graph routes to the target agent until max rounds or a final answer.
+    """
+    wf = agent_config.get("workflow_config") or {}
+    participants = wf.get("sub_agents") or wf.get("workers") or []
+    if not participants:
+        return build_single_agent_graph(agent_config, tools)
+
+    names = [p.get("name", f"agent_{i}") for i, p in enumerate(participants)]
+    llm = get_llm(agent_config)
+
+    class SwarmState(TypedDict):
+        messages: Annotated[List[BaseMessage], operator.add]
+        current_agent: str
+        rounds: int
+
+    def make_agent_node(name: str, sys_prompt: str):
+        def node(state: SwarmState) -> dict:
+            if state.get("current_agent") != name:
+                return {}
+            handoff_instruction = "\n\nIf you need another specialist to continue, end your response with exactly: HANDOFF: other_agent_name"
+            msgs = [SystemMessage(content=sys_prompt + handoff_instruction)] + list(state.get("messages", []))
+            resp = llm.invoke(msgs)
+            content = resp.content or ""
+            return {
+                "messages": [AIMessage(content=f"[{name}] {content}")],
+                "rounds": state.get("rounds", 0) + 1,
+            }
+        return node
+
+    def router(state: SwarmState) -> str:
+        last_content = ""
+        if state.get("messages"):
+            last_content = getattr(state["messages"][-1], "content", "") or ""
+        if "HANDOFF:" in last_content.upper():
+            try:
+                target = last_content.split("HANDOFF:")[-1].strip().split()[0].strip(".,!")
+                if target in names:
+                    return target
+            except Exception:
+                pass
+        if state.get("rounds", 0) >= 8:
+            return END
+        return state.get("current_agent", names[0])
+
+    workflow = StateGraph(SwarmState)
+    for p_def in participants:
+        n = p_def.get("name")
+        prompt = p_def.get("system_prompt", f"You are {n}, a specialist in the swarm.")
+        workflow.add_node(n, make_agent_node(n, prompt))
+
+    workflow.set_entry_point(names[0])
+    mapping = {nn: nn for nn in names}
+    mapping[END] = END
+    for n in names:
+        workflow.add_conditional_edges(n, router, mapping)
+
+    return workflow.compile(checkpointer=MemorySaver())
 
 
 def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
@@ -1656,6 +1717,8 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
         return build_group_chat_graph(agent_config, tools)
     if wf_type == "critique_revise":
         return build_critique_revise_graph(agent_config, tools)
+    if wf_type == "swarm":
+        return build_swarm_graph(agent_config, tools)
     return build_single_agent_graph(agent_config, tools)
 
 

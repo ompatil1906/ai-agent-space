@@ -16,7 +16,7 @@ Set `workflow_config` on an agent:
 }
 ```
 
-Supported types: `single` (default), `sequential`, `supervisor`, `parallel`, `debate`, `map_reduce`, `hierarchical`.
+Supported types: `single` (default), `sequential`, `supervisor`, `parallel`, `debate`, `map_reduce`, `hierarchical`, `consensus`, `plan_execute`, `ensemble`, `group_chat`, `swarm`.
 
 All specialist workers are full tool-using ReAct agents (they can call MCP tools, sandbox, and use reflection when configured).
 
