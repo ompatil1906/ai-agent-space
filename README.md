@@ -1,4 +1,7 @@
-## Advanced Session Update (Agent Knowledge Base)
+## Advanced Session Update (Agent Builder Polish)
+- Fixed critical JSX syntax error in AgentBuilder workflow type Select (plan_execute item was nested incorrectly).
+- Expanded starter templates: added Plan-Execute Researcher and Hierarchical Research Team with pre-filled sub-agents/teams.
+- Template selector now correctly applies sub-agents / specialists for multi-agent workflows.
 - **Agent Knowledge Base / Document RAG**: Users can upload text documents to an agent's knowledge base. Documents are chunked, embedded (Chroma + OpenAI embeddings), and stored with type=knowledge.
 - New endpoints:
   - `POST /api/v1/agents/{id}/knowledge` — add document text

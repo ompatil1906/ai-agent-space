@@ -49,6 +49,11 @@ const TEMPLATES = [
     system_prompt: "You coordinate specialists to review code for bugs, security issues, and style. Provide actionable feedback.",
     model_name: "gpt-4o",
     workflow_type: "supervisor" as const,
+    sub_agents: [
+      { name: "Security Specialist", description: "Find security vulnerabilities", system_prompt: "You are a security expert. Identify vulnerabilities, injection risks, and insecure patterns." },
+      { name: "Style Specialist", description: "Check code style and maintainability", system_prompt: "You are a senior engineer focused on clean code, readability, and best practices." },
+      { name: "Correctness Specialist", description: "Verify logic and edge cases", system_prompt: "You check for logical bugs, missing edge cases, and incorrect behavior." },
+    ],
   },
   {
     name: "Debate Moderator",
@@ -56,6 +61,33 @@ const TEMPLATES = [
     system_prompt: "You moderate a structured debate between pro and con specialists, then produce a balanced summary.",
     model_name: "gpt-4o-mini",
     workflow_type: "debate" as const,
+  },
+  {
+    name: "Plan-Execute Researcher",
+    description: "Long-horizon research agent that plans then executes",
+    system_prompt: "You are a thorough researcher. Create a detailed plan, then execute each step carefully, using tools as needed.",
+    model_name: "gpt-4o",
+    workflow_type: "plan_execute" as const,
+    longterm_enabled: true,
+  },
+  {
+    name: "Hierarchical Research Team",
+    description: "Manager with specialized research teams",
+    system_prompt: "You are the research manager. Delegate to teams and synthesize their findings.",
+    model_name: "gpt-4o",
+    workflow_type: "hierarchical" as const,
+    sub_agents: [
+      {
+        name: "Web Research Team",
+        description: "Gathers information from the web",
+        system_prompt: "Coordinate web research specialists.",
+        team_workflow_type: "parallel",
+        specialists: [
+          { name: "Searcher", description: "Finds relevant sources", system_prompt: "Search for high-quality sources on the topic." },
+          { name: "Summarizer", description: "Summarizes findings", system_prompt: "Create concise summaries of key points." },
+        ],
+      },
+    ],
   },
 ];
 
@@ -549,6 +581,11 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
               setModelName(t.model_name);
               setWorkflowType(t.workflow_type);
               if ("longterm_enabled" in t) setLongtermEnabled(!!(t as any).longterm_enabled);
+              if ("sub_agents" in t && Array.isArray((t as any).sub_agents)) {
+                setSubAgents((t as any).sub_agents);
+              } else {
+                setSubAgents([]);
+              }
             }}
             defaultValue=""
           >
@@ -798,7 +835,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <SelectItem value="debate">Debate Multi-Agent (Pro/Con + Judge)</SelectItem>
                     <SelectItem value="map_reduce">Map-Reduce (Parallel Specialists + Synthesizer)</SelectItem>
                     <SelectItem value="hierarchical">Hierarchical (Manager → Teams)</SelectItem>
-                    <SelectItem value="plan_execute">Plan <SelectItem value="hierarchical">Hierarchical (Manager → Teams)</SelectItem> Execute (Long-horizon)</SelectItem>
+                    <SelectItem value="plan_execute">Plan-Execute (Long-horizon Planning)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
