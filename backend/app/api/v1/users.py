@@ -45,6 +45,10 @@ def get_user_stats(
             func.sum(case((AgentRun.status == "completed", 1), else_=0)),
             func.avg(AgentRun.latency_ms),
             func.avg(AgentRun.steps_count),
+            func.coalesce(func.sum(AgentRun.input_tokens), 0),
+            func.coalesce(func.sum(AgentRun.output_tokens), 0),
+            func.coalesce(func.sum(AgentRun.total_tokens), 0),
+            func.coalesce(func.sum(AgentRun.estimated_cost_usd), 0.0),
         )
         .filter(AgentRun.user_id == current_user.id)
         .first()
@@ -53,6 +57,11 @@ def get_user_stats(
     completed_runs = int(run_stats[1] or 0)
     avg_latency = float(run_stats[2]) if run_stats[2] is not None else None
     avg_steps = float(run_stats[3]) if run_stats[3] is not None else None
+    total_input_tokens = int(run_stats[4] or 0)
+    total_output_tokens = int(run_stats[5] or 0)
+    total_tokens = int(run_stats[6] or 0)
+    total_estimated_cost_usd = float(run_stats[7] or 0.0)
+    avg_cost_per_run = round(total_estimated_cost_usd / total_runs, 6) if total_runs else None
 
     eval_stats = (
         db.query(func.count(AgentEvaluation.id), func.avg(AgentEvaluation.score))
@@ -96,6 +105,11 @@ def get_user_stats(
         credits=current_user.credits,
         earnings=int(ledger or 0),
         spend=int(spend or 0),
+        total_input_tokens=total_input_tokens,
+        total_output_tokens=total_output_tokens,
+        total_tokens=total_tokens,
+        total_estimated_cost_usd=round(total_estimated_cost_usd, 6),
+        avg_cost_per_run=avg_cost_per_run,
         agents=[
             {
                 "id": a.id,

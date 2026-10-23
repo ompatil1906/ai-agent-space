@@ -38,6 +38,11 @@ interface UserStats {
   credits: number;
   earnings: number;
   spend: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_estimated_cost_usd: number;
+  avg_cost_per_run: number | null;
   agents: AgentStatsItem[];
   recent_runs: RecentRunItem[];
 }
@@ -113,6 +118,16 @@ export default function DashboardPage() {
               sub={stats.avg_steps != null ? `${stats.avg_steps.toFixed(1)} steps avg` : undefined}
             />
             <StatCard label="credits" value={String(stats.credits)} sub={`earned ${stats.earnings} · spent ${stats.spend}`} />
+            <StatCard
+              label="tokens"
+              value={stats.total_tokens ? stats.total_tokens.toLocaleString() : "0"}
+              sub={`${stats.total_input_tokens.toLocaleString()} in · ${stats.total_output_tokens.toLocaleString()} out`}
+            />
+            <StatCard
+              label="est. cost"
+              value={`$${stats.total_estimated_cost_usd.toFixed(4)}`}
+              sub={stats.avg_cost_per_run != null ? `$${stats.avg_cost_per_run.toFixed(6)} / run` : undefined}
+            />
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">

@@ -334,6 +334,12 @@ class UserStats(BaseModel):
     credits: int = 0
     earnings: int = 0  # credits received from agent sales
     spend: int = 0  # credits spent on purchases + run metering
+    # Token usage & cost observability
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_tokens: int = 0
+    total_estimated_cost_usd: float = 0.0
+    avg_cost_per_run: Optional[float] = None
     agents: List[AgentStatsItem] = Field(default_factory=list)
     recent_runs: List[RecentRunItem] = Field(default_factory=list)
 

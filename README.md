@@ -1,3 +1,7 @@
+
+## Latest Observability Enhancement
+- **Token Usage & Cost Analytics**: Dashboard now aggregates total input/output tokens, estimated USD cost, and average cost per run from all AgentRun records. Provides clear cost visibility for multi-agent and long-running workflows.
+
 ## Advanced Session Update (Agent Builder Polish)
 ## Latest Session Progress
 - Added MultiAgentTimeline component for clearer live multi-agent activity visualization during runs.
