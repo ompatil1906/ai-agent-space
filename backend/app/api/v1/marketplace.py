@@ -20,6 +20,19 @@ from app.schemas import (
 router = APIRouter()
 
 
+def _user_has_purchased(db: Session, user_id: int, agent_id: int) -> bool:
+    """True if the user has a recorded purchase transaction for the agent."""
+    return (
+        db.query(CreditTransaction)
+        .filter(
+            CreditTransaction.user_id == user_id,
+            CreditTransaction.agent_id == agent_id,
+            CreditTransaction.reason == "agent_purchase",
+        )
+        .count() > 0
+    )
+
+
 @router.get("/agents", response_model=List[AgentWithRating])
 def list_published_agents(
     db: Session = Depends(get_db),
@@ -87,6 +100,12 @@ def list_published_agents(
             data.owner_email = agent.owner.email
         data.average_rating = float(avg_rating) if avg_rating is not None else None
         data.rating_count = rating_count or 0
+        purchased = (
+            agent.owner_id == current_user.id or _user_has_purchased(db, current_user.id, agent.id)
+        )
+        data.purchased = purchased
+        # Purchase rule: only free agents (price == 0) are cloneable without buying.
+        data.clonable = agent.price == 0 or purchased
         result.append(data)
     return result
 
@@ -128,17 +147,31 @@ def clone_agent(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
-    """Clone a public or owned agent into the current user's agents."""
+    """Clone an agent into the current user's agents.
+
+    Policy: only free agents (price == 0) are directly cloneable. Paid agents
+    must be purchased first; the purchase transaction unlocks cloning.
+    """
     source = db.query(Agent).filter(Agent.id == agent_id).first()
     if not source:
         raise HTTPException(status_code=404, detail="Agent not found")
     if source.owner_id != current_user.id and not source.is_public:
         raise HTTPException(status_code=403, detail="Cannot clone private agent")
 
-    # If priced and not free, require purchase first (simple check: allow clone of free or owned)
-    if source.price > 0 and source.owner_id != current_user.id:
-        # For simplicity, clone is free; purchase is separate for "ownership transfer" or premium
-        pass
+    # Paid agents require purchase; owners and free agents are exempt.
+    already_purchased = _user_has_purchased(db, current_user.id, source.id)
+    if (
+        source.owner_id != current_user.id
+        and source.price > 0
+        and not already_purchased
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                "This agent costs credits and must be purchased before cloning. "
+                f"Only free agents are directly cloneable. Price: {source.price} credits."
+            ),
+        )
 
     cloned = Agent(
         name=f"{source.name} (Clone)",

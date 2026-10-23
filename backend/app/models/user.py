@@ -28,7 +28,7 @@ class Agent(Base):
     name = Column(String, index=True, nullable=False)
     description = Column(Text, nullable=True)
     system_prompt = Column(Text, nullable=False, default="You are a helpful AI assistant.")
-    model_name = Column(String, default="gpt-4o-mini")
+    model_name = Column(String, default="gemini-3.5-flash-lite")
     temperature = Column(Float, default=0.7)
     tools_config = Column(JSON, default=list)  # list of tool configs / MCP server URLs or configs
     memory_config = Column(JSON, default=dict)  # memory settings e.g. {"enabled": true, "max_messages": 20, ...}
@@ -177,8 +177,6 @@ class CreditTransaction(Base):
     reference_id = Column(String, nullable=True)  # run id / purchase group id
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    user = relationship("User", foreign_keys=[user_id], remote_side=[User.id])
-
 
 # Relationships registered after class definitions (keeps import order safe)
 User.ratings = relationship("AgentRating", back_populates="user", cascade="all, delete-orphan")
@@ -223,6 +221,24 @@ class ApiKey(Base):
 User.api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
 
 
+class ProviderKey(Base):
+    """Bring-your-own-key LLM provider credentials.
+
+    When a user saves a key for a provider (gemini/openai/anthropic/custom),
+    their agents use that key instead of the platform default. Keys are stored
+    as-is (single-tenant SQLite app); the API always returns masked values.
+    """
+    __tablename__ = "provider_keys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    provider = Column(String, nullable=False)  # gemini | openai | anthropic | custom
+    label = Column(String, nullable=True)      # optional human-readable name
+    api_key = Column(String, nullable=False)
+    base_url = Column(String, nullable=True)   # for custom/Ollama-compatible providers
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class MCPServer(Base):
     """User-owned reusable MCP server configuration."""
     __tablename__ = "mcp_servers"
@@ -233,7 +249,13 @@ class MCPServer(Base):
     description = Column(Text, nullable=True)
     # Full connection config: {"transport": "stdio"|"streamable_http"|"sse", "command": ..., "args": [...], "url": ..., "headers": {...}}
     config = Column(JSON, nullable=False)
+    # Catalog metadata (when picked from the famous-servers gallery)
+    logo_slug = Column(String, nullable=True)  # e.g. "github" -> simple-icons CDN icon
+    category = Column(String, nullable=True)  # e.g. dev-tools, data, productivity
     is_public = Column(Boolean, default=False)  # future: shareable MCP servers
+    # Live connection status (persisted by the /test endpoint)
+    last_status = Column(String, nullable=True)  # healthy | unreachable
+    last_checked_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

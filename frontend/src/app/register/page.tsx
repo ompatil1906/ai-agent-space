@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,9 +57,19 @@ export default function RegisterPage() {
       />
       <div className="relative w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
-          <span className="flex size-9 items-center justify-center rounded-lg border border-border bg-card text-base leading-none font-medium">
-            /
-          </span>
+          <Link
+            href="/"
+            className="flex size-12 items-center justify-center rounded-2xl border border-border/80 bg-zinc-950 p-2 shadow-md transition-all hover:border-foreground/30 hover:scale-105"
+          >
+            <Image
+              src="/logos/icon.svg"
+              alt="AI Agent Space"
+              width={32}
+              height={32}
+              className="size-8 rounded-sm object-contain"
+              priority
+            />
+          </Link>
           <div>
             <h1 className="text-xl font-medium tracking-tight">
               Create your workspace

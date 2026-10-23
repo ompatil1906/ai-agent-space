@@ -231,18 +231,24 @@ class MCPService:
         raise ValueError(f"Tool '{tool_name}' not found in the provided MCP configs")
 
     async def health_check(self, tools_config: List[Dict[str, Any]], timeout: float = 10.0) -> Dict[str, Any]:
-        """Quick health check: try to load tools and report success/failure per config group."""
+        """Live connection test: try to load tools directly so failures (spawn
+        errors, refused connections, timeouts) stop the connection attempt —
+        unlike get_tools(), which swallows per-group failures for agent runs."""
+        connections = self._build_connections(tools_config)
+        if not connections:
+            return {"healthy": False, "tool_count": 0, "tools": [], "error": "No valid connection configs"}
+        client = MultiServerMCPClient(connections)
         try:
-            tools = await asyncio.wait_for(self.get_tools(tools_config), timeout=timeout)
+            tools = await asyncio.wait_for(client.get_tools(), timeout=timeout)
             return {
                 "healthy": True,
                 "tool_count": len(tools),
                 "tools": [t.name for t in tools],
             }
         except asyncio.TimeoutError:
-            return {"healthy": False, "error": "Timeout connecting to MCP servers"}
+            return {"healthy": False, "tool_count": 0, "tools": [], "error": "Timeout connecting to MCP servers"}
         except Exception as e:
-            return {"healthy": False, "error": str(e)}
+            return {"healthy": False, "tool_count": 0, "tools": [], "error": str(e)}
 
     async def resolve_tools_config(
         self,

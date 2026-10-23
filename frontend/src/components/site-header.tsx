@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "cn";
 
@@ -10,6 +11,7 @@ const NAV_LINKS = [
   { href: "/marketplace", label: "Marketplace" },
   { href: "/mcp-servers", label: "MCP Servers" },
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/settings", label: "Settings" },
 ];
 
 function HeaderInner() {
@@ -30,10 +32,17 @@ function HeaderInner() {
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-4 px-6">
         <Link href="/" className="group flex items-center gap-2.5">
-          <span className="flex size-6 items-center justify-center rounded-md border border-border bg-card text-[13px] leading-none font-medium text-foreground transition-colors group-hover:border-foreground/25">
-            /
-          </span>
-          <span className="text-sm font-medium tracking-tight">
+          <div className="flex size-7 items-center justify-center rounded-lg border border-border/80 bg-zinc-950 p-1 shadow-sm transition-all group-hover:border-foreground/30 group-hover:scale-105">
+            <Image
+              src="/logos/icon.svg"
+              alt="AI Agent Space logo"
+              width={20}
+              height={20}
+              className="size-5 rounded-sm object-contain"
+              priority
+            />
+          </div>
+          <span className="text-sm font-semibold tracking-tight">
             AI Agent Space
           </span>
         </Link>

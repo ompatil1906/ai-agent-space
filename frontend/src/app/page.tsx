@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { buttonVariants } from "@/components/ui/button";
 
 const FEATURES = [
@@ -42,10 +43,22 @@ export default function Home() {
         className="pointer-events-none absolute inset-x-0 top-0 h-[480px] bg-[radial-gradient(60%_100%_at_50%_0%,rgb(255_255_255/7%),transparent_70%)]"
       />
 
-      <section className="relative mx-auto flex w-full max-w-6xl flex-col items-center px-6 pt-24 pb-20 text-center">
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3 py-1 font-mono text-xs text-muted-foreground">
-          <span className="size-1.5 rounded-full bg-emerald-400" />
-          agents · mcp · multi-agent workflows
+      <section className="relative mx-auto flex w-full max-w-6xl flex-col items-center px-6 pt-20 pb-20 text-center">
+        <div className="mb-6 flex flex-col items-center gap-4">
+          <div className="flex size-16 items-center justify-center rounded-2xl border border-border/80 bg-zinc-950 p-3 shadow-xl ring-1 ring-white/10 transition-transform hover:scale-105">
+            <Image
+              src="/logos/icon.svg"
+              alt="AI Agent Space logo"
+              width={48}
+              height={48}
+              className="size-10 object-contain"
+              priority
+            />
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3.5 py-1.5 font-mono text-xs text-muted-foreground shadow-sm">
+            <span className="size-1.5 rounded-full bg-emerald-400" />
+            agents · mcp · multi-agent workflows
+          </div>
         </div>
 
         <h1 className="max-w-3xl text-5xl font-medium tracking-tight text-balance sm:text-6xl">
@@ -109,6 +122,21 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      <footer className="mx-auto flex w-full max-w-6xl flex-col sm:flex-row items-center justify-between gap-4 border-t border-border/40 px-6 py-8 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2.5">
+          <Image
+            src="/logos/icon.svg"
+            alt="AI Agent Space"
+            width={18}
+            height={18}
+            className="size-4.5 rounded-sm object-contain"
+          />
+          <span className="font-medium text-foreground">AI Agent Space</span>
+          <span>— platform for intelligent agent workflows</span>
+        </div>
+        <p>© 2026 AI Agent Space</p>
+      </footer>
     </div>
   );
 }

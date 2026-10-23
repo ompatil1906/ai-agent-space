@@ -10,6 +10,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./sql_app.db"
     OPENAI_API_KEY: str = ""
     OPENAI_BASE_URL: str = ""  # Optional: for Ollama, LM Studio, vLLM, etc. (e.g. http://localhost:11434/v1)
+    ANTHROPIC_API_KEY: str = ""
+    # Platform default LLM provider: Gemini. Configured via GEMINI_API_KEY env var or .env.
+    # Users can override per provider with their own keys (Settings → API Keys).
+    GEMINI_API_KEY: str = ""
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    DEFAULT_MODEL_NAME: str = "gemini-3.5-flash-lite"
     CORS_ORIGINS: str = "*"
 
     # --- Sandbox execution (Docker-based secure code execution) ---

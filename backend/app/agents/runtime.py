@@ -27,6 +27,7 @@ from app.services.approval_service import (
     wait_for_approval_db,
     resolve_approval_in_db,
 )
+from app.services.mcp_service import mcp_service
 
 logger = logging.getLogger(__name__)
 
@@ -201,38 +202,69 @@ def get_checkpointer():
 checkpointer = get_checkpointer()
 
 
-def get_llm(model_name: str, temperature: float, base_url: Optional[str] = None, provider: Optional[str] = None):
-    """Create a chat model. Supports OpenAI (default), Anthropic (claude-*), and OpenAI-compatible local servers.
+def get_llm(
+    model_name: str,
+    temperature: float,
+    base_url: Optional[str] = None,
+    provider: Optional[str] = None,
+    api_key: Optional[str] = None,
+    extra_base_url: Optional[str] = None,
+):
+    """Create a chat model.
 
-    Provider is auto-detected from model_name prefix or can be passed explicitly.
-    For Anthropic, set ANTHROPIC_API_KEY in the environment.
+    Resolution (see app.core.llm_keys): BYOK user key > platform provider key >
+    platform Gemini default (OpenAI-compatible endpoint), so every model works
+    out of the box. OpenAI/Anthropic model names are mapped to Gemini tiers when
+    only the platform Gemini key is available.
     """
-    name = (model_name or "gpt-4o-mini").lower()
-    detected = provider or (
-        "anthropic" if name.startswith("claude") else
-        "openai"
-    )
+    from app.core.llm_keys import resolve_llm
 
-    if detected == "anthropic":
+    resolved = resolve_llm(model_name, provider=provider, api_key=api_key)
+    r_provider, key, r_model = resolved["provider"], resolved["api_key"], resolved["model"]
+    compat_base = resolved["compat_base_url"]
+
+    if r_provider == "anthropic":
         try:
             from langchain_anthropic import ChatAnthropic
             return ChatAnthropic(
-                model=model_name,
+                model=r_model,
                 temperature=temperature,
-                api_key=os.environ.get("ANTHROPIC_API_KEY"),
+                api_key=key,
                 streaming=True,
             )
         except Exception as e:
-            logger.warning("Anthropic provider unavailable (%s). Falling back to OpenAI.", e)
+            logger.warning("Anthropic provider unavailable (%s). Falling back.", e)
+            resolved = resolve_llm(None)  # gemini default
+            r_provider, key, r_model, compat_base = (
+                resolved["provider"], resolved["api_key"], resolved["model"], resolved["compat_base_url"]
+            )
 
-    # Default: OpenAI or OpenAI-compatible (Ollama, LM Studio, vLLM, etc.)
+    use_native_gemini = False
+    if r_provider == "gemini":
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            use_native_gemini = True
+        except Exception as e:
+            logger.warning("Native Gemini provider unavailable (%s). Using OpenAI-compatible endpoint.", e)
+
+    if use_native_gemini:
+        # Native SDK preserves Gemini 3.x thought signatures across tool-call
+        # turns (the OpenAI-compatible endpoint rejects their absence).
+        return ChatGoogleGenerativeAI(
+            model=r_model or model_name,
+            temperature=temperature,
+            api_key=key,
+            streaming=True,
+        )
+
+    effective_base = base_url or extra_base_url or compat_base or (settings.OPENAI_BASE_URL or None)
     kwargs = {
-        "model": model_name,
+        "model": r_model or model_name,
         "temperature": temperature,
-        "api_key": settings.OPENAI_API_KEY or "sk-local",
+        "api_key": key or "sk-local",
         "streaming": True,
     }
-    effective_base = base_url or settings.OPENAI_BASE_URL or None
     if effective_base:
         kwargs["base_url"] = effective_base
     return ChatOpenAI(**kwargs)
@@ -427,29 +459,59 @@ def _get_structured_config(agent_config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _make_reliable_tool_node(tools: List[Any], max_retries: int = 1):
-    """ToolNode wrapper that catches errors and returns them as ToolMessages so the LLM can recover."""
-    base_tool_node = ToolNode(tools)
+    """Tool node that catches errors and returns them as ToolMessages so the LLM can recover.
 
-    def reliable_tools(state: AgentState):
-        try:
-            result = base_tool_node.invoke(state)
-            return result
-        except Exception as e:
-            logger.warning("Tool execution failed: %s", e)
-            # Build error ToolMessages for any pending tool calls
-            last = state["messages"][-1] if state.get("messages") else None
-            tool_calls = getattr(last, "tool_calls", None) or []
-            error_msgs = []
-            for tc in tool_calls:
-                error_msgs.append(
-                    ToolMessage(
-                        content=f"Tool error (retryable): {type(e).__name__}: {str(e)[:500]}. Please try a different approach or fix the inputs.",
-                        tool_call_id=tc.get("id") or tc.get("tool_call_id") or "unknown",
-                    )
-                )
-            if not error_msgs:
-                error_msgs = [AIMessage(content=f"[Tool execution error: {e}]")]
-            return {"messages": error_msgs}
+    Executes each tool call on the tool's async path when available (MCP adapter
+    tools are coroutine-only StructuredTools and raise NotImplementedError on the
+    sync path); sync-only tools run in an executor so the event loop stays free.
+    """
+    by_name = {}
+    for t in tools or []:
+        name = getattr(t, "name", None)
+        if name:
+            by_name[name] = t
+    max_output_chars = 20000
+
+    async def reliable_tools(state: AgentState):
+        last = state["messages"][-1] if state.get("messages") else None
+        tool_calls = getattr(last, "tool_calls", None) or []
+        results: List[ToolMessage] = []
+        for tc in tool_calls:
+            tool = by_name.get(tc.get("name"))
+            call_id = tc.get("id") or tc.get("tool_call_id") or "unknown"
+            if tool is None:
+                results.append(ToolMessage(
+                    content=f"Unknown tool: {tc.get('name')}. Available: {', '.join(sorted(by_name))}",
+                    tool_call_id=call_id,
+                ))
+                continue
+            args = tc.get("args") or tc.get("arguments") or {}
+            content = None
+            for attempt in range(max(1, int(max_retries) or 1) + 1):
+                try:
+                    if getattr(tool, "coroutine", None) is not None:
+                        out = await tool.ainvoke(args)
+                    else:
+                        out = await asyncio.get_running_loop().run_in_executor(
+                            None, lambda: tool.invoke(args)
+                        )
+                    content = out if isinstance(out, str) else json.dumps(out, default=str)
+                    break
+                except Exception as e:
+                    logger.warning("Tool execution failed (attempt %s): %s", attempt + 1, e)
+                    if attempt >= max_retries:
+                        content = (
+                            f"Tool error (retryable): {type(e).__name__}: {str(e)[:500]}. "
+                            "Please try a different approach or fix the inputs."
+                        )
+                        break
+            if content is None:
+                content = "[Tool returned no output]"
+            results.append(ToolMessage(content=str(content)[:max_output_chars], tool_call_id=call_id))
+        if not results:
+            # No pending tool calls should reach the tools node; keep graph valid.
+            return {"messages": [AIMessage(content="[No pending tool calls in tools node.]")]}
+        return {"messages": results}
 
     return reliable_tools
 
@@ -500,6 +562,60 @@ def _make_structured_finalizer(agent_config: Dict[str, Any], base_llm):
     return finalize
 
 
+def _text_from_content(content: Any) -> str:
+    """Flatten chat content into plain text.
+
+    Native Gemini models (and other multi-part responses) may return content as
+    a list of typed parts, e.g. [{"type": "text", "text": "...", "extras": {...}}].
+    Extract only the human-readable text parts; strings pass through unchanged.
+    Signatures / thinking / tool-call blocks are intentionally dropped here —
+    message history keeps the full fidelity for replay.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, (list, tuple)):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                if block.get("type") == "thinking" or block.get("reasoning") or block.get("thinking"):
+                    continue
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+                elif isinstance(block.get("content"), str):
+                    parts.append(block["content"])
+        return "\n".join(p for p in parts if p)
+    return str(content)
+
+
+def _invoke_llm_with_retry(llm, messages, attempts: int = 3):
+    """LLM invoke with backoff on rate-limit (HTTP 429) errors.
+
+    Gemini Free Tier allows ~5 requests/minute per model, so multi-step
+    ReAct loops can exhaust the per-minute quota mid-run. Rather than
+    failing the whole run, wait briefly and retry.
+    """
+    delay = 10.0
+    for attempt in range(attempts):
+        try:
+            return llm.invoke(messages)
+        except Exception as e:  # noqa: BLE001
+            text = str(e)
+            is_rate_limit = "429" in text or "RateLimit" in type(e).__name__ or "RESOURCE_EXHAUSTED" in text
+            if not is_rate_limit or attempt == attempts - 1:
+                raise
+            wait = min(delay, 35.0)
+            logger.warning("LLM rate limited (429). Backing off %.0fs (attempt %d/%d).", wait, attempt + 1, attempts)
+            time.sleep(wait)
+            delay *= 2
+    # Unreachable, defensive
+    return llm.invoke(messages)
+
+
 def _build_node_call_model(llm, agent_config, fallback_prompt: str, node_label: str):
     """Standard model-calling node used across graph builders."""
     def call_model(state: AgentState):
@@ -507,7 +623,7 @@ def _build_node_call_model(llm, agent_config, fallback_prompt: str, node_label: 
         history = apply_memory_window(state["messages"], mem_cfg)
         enhanced = get_enhanced_system_prompt(fallback_prompt, agent_config, state)
         messages = [SystemMessage(content=enhanced)] + history
-        response = llm.invoke(messages)
+        response = _invoke_llm_with_retry(llm, messages)
         response.additional_kwargs = response.additional_kwargs or {}
         response.additional_kwargs["agent"] = agent_config.get("name", "agent")
         if node_label:
@@ -524,7 +640,7 @@ def build_single_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[
     system_prompt = agent_config.get("system_prompt", "You are a helpful AI assistant.")
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
 
-    base_llm = get_llm(model_name, temperature, base_url)
+    base_llm = get_llm(model_name, temperature, base_url, api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
     struct_cfg = _get_structured_config(agent_config)
     llm = base_llm
     if tools:
@@ -557,23 +673,19 @@ def build_single_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[
                 return "tools"
             return "finalize" if has_struct else "agent_done"
 
+        # Only declare branch targets that actually exist as nodes —
+        # LangGraph validates the mapping and raises on unknown targets.
         if reflect_cfg["enabled"] and reflect_cfg["max_rounds"] > 0:
-            workflow.add_conditional_edges(
-                "agent",
-                route_after_agent,
-                {"tools": "tools", "finalize": "finalize", "agent_done": "reflect"},
-            )
             workflow.add_node("reflect", _make_reflect_node(agent_config, reflect_cfg["max_rounds"]))
             workflow.add_edge("reflect", "agent")
+            branch_map = {"tools": "tools", "agent_done": "reflect"}
         else:
-            workflow.add_conditional_edges(
-                "agent",
-                route_after_agent,
-                {"tools": "tools", "finalize": "finalize", "agent_done": END},
-            )
-        workflow.add_edge("tools", "agent")
+            branch_map = {"tools": "tools", "agent_done": END}
         if has_struct:
+            branch_map["finalize"] = "finalize"
             workflow.add_edge("finalize", END)
+        workflow.add_conditional_edges("agent", route_after_agent, branch_map)
+        workflow.add_edge("tools", "agent")
     else:
         if reflect_cfg["enabled"] and reflect_cfg["max_rounds"] > 0:
             workflow.add_conditional_edges("agent", lambda s: "reflect", {"reflect": "reflect"})
@@ -604,7 +716,7 @@ def build_worker_subgraph(
     temperature = agent_config.get("temperature", 0.7)
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
 
-    llm = get_llm(model_name, temperature, base_url)
+    llm = get_llm(model_name, temperature, base_url, api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
     struct_cfg = _get_structured_config(agent_config)
     if tools:
         tool_choice = struct_cfg.get("tool_choice", "auto")
@@ -658,6 +770,8 @@ def _make_reflect_node(agent_config: Dict[str, Any], max_rounds: int):
         agent_config.get("model_name", "gpt-4o-mini"),
         max(0.0, min(0.2, agent_config.get("temperature", 0.7))),
         agent_config.get("base_url") or agent_config.get("openai_base_url"),
+        api_key=agent_config.get("_llm_api_key"),
+        extra_base_url=agent_config.get("_llm_base_url"),
     )
 
     def reflect(state: AgentState):
@@ -759,7 +873,8 @@ def build_supervisor_graph(agent_config: Dict[str, Any], tools: Optional[List[An
 
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
-    base_llm = get_llm(model_name, temperature, agent_config.get("base_url") or agent_config.get("openai_base_url"))
+    llm = get_llm(model_name, temperature, agent_config.get("base_url") or agent_config.get("openai_base_url"),
+                  api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
 
     worker_names = [w.get("name", f"worker_{i}") for i, w in enumerate(workers)]
     worker_desc = "\n".join(
@@ -831,7 +946,7 @@ def build_parallel_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
-    llm = get_llm(model_name, temperature, base_url)
+    llm = get_llm(model_name, temperature, base_url, api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
     if tools:
         llm = llm.bind_tools(tools)
 
@@ -911,7 +1026,7 @@ def build_debate_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] 
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
-    llm = get_llm(model_name, temperature, base_url)
+    llm = get_llm(model_name, temperature, base_url, api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
 
     workflow = StateGraph(AgentState)
 
@@ -972,7 +1087,7 @@ def build_map_reduce_graph(agent_config: Dict[str, Any], tools: Optional[List[An
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
-    base_llm = get_llm(model_name, temperature, base_url)
+    base_llm = get_llm(model_name, temperature, base_url, api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
     if tools:
         base_llm = base_llm.bind_tools(tools)
 
@@ -1063,7 +1178,7 @@ def build_consensus_graph(agent_config: Dict[str, Any], tools: Optional[List[Any
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.3)  # lower temp for more consistent consensus
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
-    llm = get_llm(model_name, temperature, base_url)
+    llm = get_llm(model_name, temperature, base_url, api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
     if tools:
         llm = llm.bind_tools(tools)
 
@@ -1155,7 +1270,7 @@ def build_hierarchical_graph(agent_config: Dict[str, Any], tools: Optional[List[
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.7)
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
-    base_llm = get_llm(model_name, temperature, base_url)
+    base_llm = get_llm(model_name, temperature, base_url, api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
 
     team_names = [t.get("name", f"team_{i}") for i, t in enumerate(teams)]
     team_desc = "\n".join(
@@ -1229,7 +1344,7 @@ def build_plan_execute_graph(agent_config: Dict[str, Any], tools: Optional[List[
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
     system_prompt = agent_config.get("system_prompt", "You are a capable AI agent.")
 
-    base_llm = get_llm(model_name, temperature, base_url)
+    base_llm = get_llm(model_name, temperature, base_url, api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
     llm = base_llm.bind_tools(tools) if tools else base_llm
 
     workflow = StateGraph(AgentState)
@@ -1299,7 +1414,7 @@ def build_ensemble_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.4)
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
-    llm = get_llm(model_name, temperature, base_url)
+    llm = get_llm(model_name, temperature, base_url, api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
     if tools:
         llm = llm.bind_tools(tools)
 
@@ -1400,9 +1515,8 @@ def build_group_chat_graph(agent_config: Dict[str, Any], tools: Optional[List[An
         rounds: int
         concluded: bool
 
-    llm = ChatOpenAI(model=model_name, temperature=temperature)
-
-    # Selector prompt
+    llm = get_llm(model_name, temperature, agent_config.get("base_url") or agent_config.get("openai_base_url"),
+                  api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
     selector_prompt = ChatPromptTemplate.from_messages([
         ("system", 
          "You are the group chat moderator. Participants: {participants}\n"
@@ -1503,7 +1617,7 @@ def build_critique_revise_graph(agent_config: Dict[str, Any], tools: Optional[Li
     model_name = agent_config.get("model_name", "gpt-4o-mini")
     temperature = agent_config.get("temperature", 0.5)
     base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
-    llm = get_llm(model_name, temperature, base_url)
+    llm = get_llm(model_name, temperature, base_url, api_key=agent_config.get("_llm_api_key"), extra_base_url=agent_config.get("_llm_base_url"))
     if tools:
         llm = llm.bind_tools(tools)
 
@@ -1642,7 +1756,13 @@ def build_swarm_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
         return build_single_agent_graph(agent_config, tools)
 
     names = [p.get("name", f"agent_{i}") for i, p in enumerate(participants)]
-    llm = get_llm(agent_config)
+    llm = get_llm(
+        agent_config.get("model_name", "gpt-4o-mini"),
+        float(agent_config.get("temperature", 0.7)),
+        agent_config.get("base_url") or agent_config.get("openai_base_url"),
+        api_key=agent_config.get("_llm_api_key"),
+        extra_base_url=agent_config.get("_llm_base_url"),
+    )
 
     class SwarmState(TypedDict):
         messages: Annotated[List[BaseMessage], operator.add]
@@ -1737,7 +1857,7 @@ async def _load_tools(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
     if mcp_config:
         agent_tools.extend(await mcp_service.get_tools(mcp_config) or [])
         # Add live MCP resource & prompt tools so agents can discover and read context
-        from app.agents.tools import build_mcp_meta_tools, build_mcp_prompt_tool
+        from app.agents.tools import build_mcp_meta_tools, build_mcp_prompt_tool  # local import to avoid cycles
         agent_tools.extend(build_mcp_meta_tools(mcp_config))
         agent_tools.extend(build_mcp_prompt_tool(mcp_config))
 
@@ -1843,7 +1963,7 @@ async def run_agent(
     result = await graph.aget_state(config)
     messages = result.values.get("messages", []) if result else []
     last_message = messages[-1] if messages else None
-    output = getattr(last_message, "content", "") if last_message else ""
+    output = _text_from_content(getattr(last_message, "content", "")) if last_message else ""
     if not output:
         output = full_output
 
@@ -1905,7 +2025,9 @@ async def stream_agent(
             if kind == "on_chat_model_stream":
                 chunk = event.get("data", {}).get("chunk")
                 if chunk and hasattr(chunk, "content") and chunk.content:
-                    token = chunk.content
+                    token = _text_from_content(chunk.content)
+                    if not token:
+                        continue
                     full_output += token
                     yield {"type": "token", "content": token}
                     # Detect planning thoughts for advanced observability
@@ -1982,17 +2104,20 @@ async def stream_agent(
                 messages = output.get("messages", []) if isinstance(output, dict) else []
                 if messages:
                     last = messages[-1]
-                    content = getattr(last, "content", "") or ""
-                    agent_name = getattr(last, "additional_kwargs", {}).get("agent") or name or "agent"
-                    if content and content not in full_output:
-                        full_output = content
-                    # Emit structured agent step for multi-agent visibility
-                    if agent_name and content:
-                        yield {
-                            "type": "agent_step",
-                            "agent": agent_name,
-                            "content": content[:1000],
-                        }
+                    # Only AI messages carry final answers; ToolMessages (end of
+                    # the tools node) must not replace the accumulated output.
+                    if isinstance(last, AIMessage):
+                        content = _text_from_content(last.content)
+                        agent_name = getattr(last, "additional_kwargs", {}).get("agent") or name or "agent"
+                        if content and content not in full_output:
+                            full_output = content
+                        # Emit structured agent step for multi-agent visibility
+                        if agent_name and content:
+                            yield {
+                                "type": "agent_step",
+                                "agent": agent_name,
+                                "content": content[:1000],
+                            }
 
         store_interaction_memory(agent_config, user_input, full_output)
         cost = _estimate_cost(model_name, input_tokens, output_tokens)
@@ -2027,8 +2152,8 @@ async def evaluate_output(
         "Reply in JSON: {\"score\": number, \"explanation\": \"string\", \"criteria_scores\": {}}"
     )
     llm = get_llm("gpt-4o-mini", 0.0)
-    response = llm.invoke([HumanMessage(content=judge_prompt)])
-    content = response.content or "{}"
+    response = _invoke_llm_with_retry(llm, [HumanMessage(content=judge_prompt)])
+    content = _text_from_content(response.content) or "{}"
     try:
         import json
         # Extract JSON if wrapped

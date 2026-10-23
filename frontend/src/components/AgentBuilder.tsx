@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { McpLogo } from "@/components/McpLogo";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { API_BASE } from "@/lib/api";
 
@@ -17,6 +18,9 @@ interface ToolConfig {
   command?: string;
   args?: string[];
   url?: string;
+  // Reference to a saved MCP server (registry) — resolved at run time
+  server_id?: number;
+  logo?: string | null;
 }
 
 interface SubAgent {
@@ -39,7 +43,7 @@ const TEMPLATES = [
     name: "Research Assistant",
     description: "Web research with tool use and structured summaries",
     system_prompt: "You are an expert research assistant. Use tools to gather information, then synthesize clear, cited answers. Prefer primary sources.",
-    model_name: "gpt-4o-mini",
+    model_name: "gemini-2.5-flash",
     workflow_type: "single" as const,
     longterm_enabled: true,
   },
@@ -47,7 +51,7 @@ const TEMPLATES = [
     name: "Code Reviewer",
     description: "Multi-agent code review: security, style, and correctness",
     system_prompt: "You coordinate specialists to review code for bugs, security issues, and style. Provide actionable feedback.",
-    model_name: "gpt-4o",
+    model_name: "gemini-2.5-pro",
     workflow_type: "supervisor" as const,
     sub_agents: [
       { name: "Security Specialist", description: "Find security vulnerabilities", system_prompt: "You are a security expert. Identify vulnerabilities, injection risks, and insecure patterns." },
@@ -59,14 +63,14 @@ const TEMPLATES = [
     name: "Debate Moderator",
     description: "Two-sided debate on any topic with a final synthesis",
     system_prompt: "You moderate a structured debate between pro and con specialists, then produce a balanced summary.",
-    model_name: "gpt-4o-mini",
+    model_name: "gemini-2.5-flash",
     workflow_type: "debate" as const,
   },
   {
     name: "Plan-Execute Researcher",
     description: "Long-horizon research agent that plans then executes",
     system_prompt: "You are a thorough researcher. Create a detailed plan, then execute each step carefully, using tools as needed.",
-    model_name: "gpt-4o",
+    model_name: "gemini-2.5-pro",
     workflow_type: "plan_execute" as const,
     longterm_enabled: true,
   },
@@ -74,7 +78,7 @@ const TEMPLATES = [
     name: "Hierarchical Research Team",
     description: "Manager with specialized research teams",
     system_prompt: "You are the research manager. Delegate to teams and synthesize their findings.",
-    model_name: "gpt-4o",
+    model_name: "gemini-2.5-pro",
     workflow_type: "hierarchical" as const,
     sub_agents: [
       {
@@ -93,7 +97,7 @@ const TEMPLATES = [
     name: "Collaborative Group Chat",
     description: "Multi-specialist discussion with moderator-driven turns until conclusion",
     system_prompt: "You are facilitating a group of specialists who discuss the problem collaboratively.",
-    model_name: "gpt-4o-mini",
+    model_name: "gemini-2.5-flash",
     workflow_type: "group_chat" as const,
     sub_agents: [
       { name: "Strategist", description: "High-level strategy and framing", system_prompt: "You propose strategic approaches and high-level framing of the problem." },
@@ -105,7 +109,7 @@ const TEMPLATES = [
     name: "Critique-Revise Loop",
     description: "Generator drafts, Critic scores & reviews, Reviser improves until quality threshold (Reflexion-style)",
     system_prompt: "You coordinate a critique-revise loop to produce high-quality answers.",
-    model_name: "gpt-4o-mini",
+    model_name: "gemini-2.5-flash",
     workflow_type: "critique_revise" as const,
     sub_agents: [],
   },
@@ -113,11 +117,20 @@ const TEMPLATES = [
 
 const DEFAULT_PROMPT = "You are a helpful AI assistant. You have access to tools when configured.";
 
+const MODEL_PRESETS = [
+  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (default)" },
+  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+  { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite" },
+  { value: "gpt-4o-mini", label: "GPT-4o mini (OpenAI)" },
+  { value: "gpt-4o", label: "GPT-4o (OpenAI)" },
+  { value: "claude-3-5-sonnet-latest", label: "Claude 3.5 Sonnet (Anthropic)" },
+];
+
 export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [name, setName] = useState(initial?.name || "");
   const [description, setDescription] = useState(initial?.description || "");
   const [systemPrompt, setSystemPrompt] = useState(initial?.system_prompt || DEFAULT_PROMPT);
-  const [modelName, setModelName] = useState(initial?.model_name || "gpt-4o-mini");
+  const [modelName, setModelName] = useState(initial?.model_name || "gemini-2.5-flash");
   const [temperature, setTemperature] = useState(initial?.temperature || 0.7);
   const [tools, setTools] = useState<ToolConfig[]>(initial?.tools_config || []);
   const [registeredServers, setRegisteredServers] = useState<any[]>([]);
@@ -256,6 +269,11 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
 
   const serializeTools = (): any[] =>
     tools.map((t) => {
+      // Registry references stay as stable references — the backend expands
+      // them at run time so agents always use the live connection config.
+      if (t.server_id) {
+        return { name: t.name, transport: t.transport, server_id: t.server_id };
+      }
       const cfg: any = { name: t.name, transport: t.transport };
       if (t.transport === "stdio") {
         cfg.command = t.command || "python";
@@ -388,19 +406,21 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
     const id = parseInt(selectedServerId, 10);
     const server = registeredServers.find((s) => s.id === id);
     if (!server) return;
-    // Store as server_id reference (resolved at runtime) plus name for UI
+    // Stable reference only — expanded from the registry at run time
     setTools([
       ...tools,
       {
         name: server.name,
         transport: server.config?.transport || "stdio",
-        // @ts-ignore - extra field for resolution
         server_id: server.id,
-        ...(server.config || {}),
+        logo: server.logo_slug || null,
       } as any,
     ]);
     setSelectedServerId("");
   };
+
+  // Inline (manually configured) entries only — registry refs are server-side
+  const inlineTools = () => tools.filter((t: any) => !t.server_id);
 
   // Load registered servers on mount
   useEffect(() => {
@@ -498,7 +518,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(tools),
+        body: JSON.stringify(inlineTools()),
       });
       if (res.ok) {
         setValidationResult(await res.json());
@@ -522,7 +542,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : "",
         },
-        body: JSON.stringify(tools),
+        body: JSON.stringify(inlineTools()),
       });
       if (res.ok) {
         const data = await res.json();
@@ -546,7 +566,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : "",
         },
-        body: JSON.stringify(tools),
+        body: JSON.stringify(inlineTools()),
       });
       if (res.ok) {
         const data = await res.json();
@@ -570,7 +590,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
           "Content-Type": "application/json",
           Authorization: token ? `Bearer ${token}` : "",
         },
-        body: JSON.stringify(tools),
+        body: JSON.stringify(inlineTools()),
       });
       if (res.ok) {
         const data = await res.json();
@@ -639,7 +659,32 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 </div>
                 <div>
                   <label className="font-mono text-xs text-muted-foreground uppercase">Model</label>
-                  <Input value={modelName} onChange={(e) => setModelName(e.target.value)} />
+                  <Select
+                    value={MODEL_PRESETS.some((m) => m.value === modelName) ? modelName : "custom"}
+                    onValueChange={(v) => setModelName(v ? (v === "custom" ? "" : v) : "")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MODEL_PRESETS.map((m) => (
+                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                      ))}
+                      <SelectItem value="custom">Custom model…</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {!MODEL_PRESETS.some((m) => m.value === modelName) && (
+                    <Input
+                      className="mt-2"
+                      placeholder="e.g. gemini-2.0-flash, ollama/llama3"
+                      value={modelName}
+                      onChange={(e) => setModelName(e.target.value)}
+                    />
+                  )}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Every model runs on the platform Gemini key.{" "}
+                    <a href="/settings" className="underline hover:text-foreground">Add your own API&nbsp;key →</a>
+                  </p>
                 </div>
               </div>
               <div>
@@ -1061,54 +1106,77 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     </ul>
                   </div>
                 )}
-                {tools.map((tool, i) => (
-                  <div key={i} className="space-y-2 rounded-lg border border-border p-3">
-                    <div className="flex justify-between">
-                      <Badge variant="secondary" className="font-mono">Tool {i + 1}</Badge>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => removeTool(i)}>
-                        Remove
-                      </Button>
-                    </div>
-                    <Input
-                      placeholder="Name"
-                      value={tool.name}
-                      onChange={(e) => updateTool(i, { name: e.target.value })}
-                    />
-                    <Select
-                      value={tool.transport}
-                      onValueChange={(v: any) => updateTool(i, { transport: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="stdio">stdio</SelectItem>
-                        <SelectItem value="streamable_http">streamable_http</SelectItem>
-                        <SelectItem value="sse">sse</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {tool.transport === "stdio" ? (
+                {tools.map((tool, i) => {
+                  const isRef = !!(tool as any).server_id;
+                  return (
+                    <div key={i} className="space-y-2 rounded-lg border border-border p-3">
+                      <div className="flex justify-between">
+                        {isRef ? (
+                          <Badge variant="secondary" className="font-mono">Tool {i + 1} · connected</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="font-mono">Tool {i + 1}</Badge>
+                        )}
+                        <Button type="button" size="sm" variant="ghost" onClick={() => removeTool(i)}>
+                          Remove
+                        </Button>
+                      </div>
+                      {isRef ? (
+                        <div className="flex items-center gap-3">
+                          <McpLogo slug={(tool as any).logo} name={tool.name} size={28} />
+                          <div>
+                            <Input value={tool.name} disabled className="font-mono text-xs h-8" />
+                            <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                              registered connection ({tool.transport}) · config resolved fresh at run time ·
+                              {" "}
+                              <a href="/mcp-servers" className="underline underline-offset-2">manage</a>
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
                       <>
-                        <Input
-                          placeholder="Command (e.g. python)"
-                          value={tool.command || ""}
-                          onChange={(e) => updateTool(i, { command: e.target.value })}
-                        />
-                        <Input
-                          placeholder="Args (space separated)"
-                          value={(tool.args || []).join(" ")}
-                          onChange={(e) => updateTool(i, { args: e.target.value.split(" ").filter(Boolean) })}
-                        />
-                      </>
-                    ) : (
                       <Input
-                        placeholder="URL (e.g. http://localhost:8001/mcp)"
-                        value={tool.url || ""}
-                        onChange={(e) => updateTool(i, { url: e.target.value })}
+                        placeholder="Name"
+                        value={tool.name}
+                        onChange={(e) => updateTool(i, { name: e.target.value })}
                       />
-                    )}
-                  </div>
-                ))}
+                      <Select
+                        value={tool.transport}
+                        onValueChange={(v: any) => updateTool(i, { transport: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="stdio">stdio</SelectItem>
+                          <SelectItem value="streamable_http">streamable_http</SelectItem>
+                          <SelectItem value="sse">sse</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {tool.transport === "stdio" ? (
+                        <>
+                          <Input
+                            placeholder="Command (e.g. python)"
+                            value={tool.command || ""}
+                            onChange={(e) => updateTool(i, { command: e.target.value })}
+                          />
+                          <Input
+                            placeholder="Args (space separated)"
+                            value={(tool.args || []).join(" ")}
+                            onChange={(e) => updateTool(i, { args: e.target.value.split(" ").filter(Boolean) })}
+                          />
+                        </>
+                      ) : (
+                        <Input
+                          placeholder="URL (e.g. http://localhost:8001/mcp)"
+                          value={tool.url || ""}
+                          onChange={(e) => updateTool(i, { url: e.target.value })}
+                        />
+                      )}
+                      </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               <Button type="submit" disabled={loading}>

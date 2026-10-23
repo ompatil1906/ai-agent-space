@@ -18,6 +18,18 @@ export const metadata: Metadata = {
   title: "AI Agent Space",
   description:
     "Build, configure, run, and share advanced AI agents with real tool use, MCP servers, and multi-agent workflows.",
+  icons: {
+    icon: [
+      { url: "/logos/icon.svg", type: "image/svg+xml" },
+      { url: "/logos/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/logos/icon-512x512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/logos/icon-192x192.png", sizes: "192x192", type: "image/png" },
+    ],
+    shortcut: "/logos/icon.svg",
+  },
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -24,6 +24,8 @@ interface MarketplaceAgent {
   tools_config?: any[];
   average_rating?: number | null;
   rating_count: number;
+  purchased: boolean;
+  clonable: boolean;
 }
 
 interface LeaderboardEntry {
@@ -314,14 +316,30 @@ export default function MarketplacePage() {
                   <p className="mb-4 font-mono text-xs text-muted-foreground">
                     model: {agent.model_name} · temp: {agent.temperature}
                   </p>
-                  <div className="mt-auto flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => cloneAgent(agent.id)}>
-                      Clone
-                    </Button>
+                  <div className="mt-auto flex flex-wrap items-center gap-2">
+                    {agent.clonable ? (
+                      <Button variant="outline" size="sm" onClick={() => cloneAgent(agent.id)}>
+                        Clone
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled
+                        title="Purchase required — only free agents are directly cloneable"
+                      >
+                        🔒 Clone
+                      </Button>
+                    )}
                     {agent.price > 0 && (
                       <Button size="sm" onClick={() => purchaseAgent(agent.id, agent.price)}>
-                        Buy
+                        {agent.purchased ? "Buy Again" : "Buy"}
                       </Button>
+                    )}
+                    {agent.purchased && (
+                      <Badge variant="outline" className="font-mono text-xs">
+                        ✓ purchased
+                      </Badge>
                     )}
                     <Button
                       variant="secondary"

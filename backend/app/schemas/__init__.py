@@ -66,7 +66,7 @@ class AgentBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: Optional[str] = None
     system_prompt: str = "You are a helpful AI assistant."
-    model_name: str = "gpt-4o-mini"
+    model_name: str = "gemini-2.5-flash"
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     tools_config: List[Dict[str, Any]] = Field(default_factory=list)
     memory_config: Dict[str, Any] = Field(default_factory=dict)
@@ -282,6 +282,9 @@ class AgentRatingPublic(BaseModel):
 class AgentWithRating(AgentPublic):
     average_rating: Optional[float] = None
     rating_count: int = 0
+    # Marketplace entitlements: paid agents must be purchased before cloning
+    purchased: bool = False
+    clonable: bool = False
 
 
 # Credit ledger schemas
@@ -395,6 +398,8 @@ class MCPServerBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: Optional[str] = None
     config: Dict[str, Any]  # transport, command/args or url, headers, etc.
+    logo_slug: Optional[str] = None  # catalog icon key (e.g. "github")
+    category: Optional[str] = None
     is_public: bool = False
 
 
@@ -406,14 +411,49 @@ class MCPServerUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
+    logo_slug: Optional[str] = None
+    category: Optional[str] = None
     is_public: Optional[bool] = None
+
+
+class MCPTestResult(BaseModel):
+    server_id: int = 0
+    healthy: bool
+    tool_count: int = 0
+    tools: List[str] = Field(default_factory=list)
+    error: Optional[str] = None
+    checked_at: datetime
+
+
+class MCPTestRequest(BaseModel):
+    """Ad-hoc connection test for an unsaved config (Test → Connect flow)."""
+    config: Dict[str, Any]
 
 
 class MCPServerPublic(MCPServerBase):
     id: int
     owner_id: int
+    last_status: Optional[str] = None
+    last_checked_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+# BYOK provider keys
+class ProviderKeyCreate(BaseModel):
+    provider: str = Field(pattern="^(gemini|openai|anthropic|custom)$")
+    api_key: str = Field(min_length=8)
+    label: Optional[str] = None
+    base_url: Optional[str] = None  # for custom / Ollama-compatible endpoints
+
+
+class ProviderKeyPublic(BaseModel):
+    id: int
+    provider: str
+    label: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key_masked: str
+    created_at: datetime

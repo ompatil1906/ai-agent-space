@@ -41,10 +41,13 @@ class LongTermMemoryService:
                 metadata={"hnsw:space": "cosine"},
             )
 
+            from app.core.llm_keys import resolve_embeddings
+
+            emb = resolve_embeddings()
             self.embeddings = OpenAIEmbeddings(
-                model="text-embedding-3-small",
-                api_key=settings.OPENAI_API_KEY or "sk-local",
-                base_url=settings.OPENAI_BASE_URL or None,
+                model=emb["model"],
+                api_key=emb["api_key"],
+                base_url=emb["base_url"],
             )
             self._available = True
             logger.info("LongTermMemoryService initialized with Chroma at %s", persist_dir)
@@ -200,11 +203,14 @@ class LongTermMemoryService:
             from langchain_openai import ChatOpenAI
 
             if llm is None:
+                from app.core.llm_keys import resolve_llm
+
+                r = resolve_llm("gpt-4o-mini")
                 llm = ChatOpenAI(
-                    model="gpt-4o-mini",
+                    model=r["model"],
                     temperature=0.0,
-                    api_key=settings.OPENAI_API_KEY or "sk-local",
-                    base_url=settings.OPENAI_BASE_URL or None,
+                    api_key=r["api_key"],
+                    base_url=r["compat_base_url"] or settings.OPENAI_BASE_URL or None,
                 )
             summary_prompt = (
                 "Summarize the following agent interaction into 2-4 concise bullet points "
@@ -277,12 +283,16 @@ class LongTermMemoryService:
 
             combined = "\n---\n".join(raw_texts[:20])[:6000]
             from langchain_openai import ChatOpenAI
+
             if llm is None:
+                from app.core.llm_keys import resolve_llm
+
+                r = resolve_llm("gpt-4o-mini")
                 llm = ChatOpenAI(
-                    model="gpt-4o-mini",
+                    model=r["model"],
                     temperature=0.0,
-                    api_key=settings.OPENAI_API_KEY or "sk-local",
-                    base_url=settings.OPENAI_BASE_URL or None,
+                    api_key=r["api_key"],
+                    base_url=r["compat_base_url"] or settings.OPENAI_BASE_URL or None,
                 )
             prompt = (
                 "Consolidate the following agent memories into 3-6 dense, non-redundant bullet points. "

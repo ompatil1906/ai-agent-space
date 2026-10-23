@@ -20,9 +20,14 @@ from app.services.mcp_service import mcp_service
 router = APIRouter()
 
 
-def _build_agent_config(agent: Agent, user: User) -> dict:
-    """Serialize an Agent model into the runtime configuration dict."""
-    return {
+def _build_agent_config(agent: Agent, user: User, db: Optional[Session] = None) -> dict:
+    """Serialize an Agent model into the runtime configuration dict.
+
+    Resolves the LLM credentials for this user: their own provider key (BYOK)
+    when they've added one for the agent's provider, otherwise the platform
+    default (Gemini) is applied inside the runtime.
+    """
+    agent_config = {
         "id": agent.id,
         "user_id": user.id,
         "name": agent.name,
@@ -37,6 +42,23 @@ def _build_agent_config(agent: Agent, user: User) -> dict:
         "sandbox_enabled": bool(agent.sandbox_enabled),
         "advanced_config": agent.advanced_config or {},
     }
+
+    # BYOK: user's own key for the agent's provider wins over platform defaults
+    if db is not None:
+        from app.core.llm_keys import detect_provider
+        from app.models import ProviderKey
+
+        provider = detect_provider(agent.model_name)
+        key_row = (
+            db.query(ProviderKey)
+            .filter(ProviderKey.user_id == user.id, ProviderKey.provider == provider)
+            .first()
+        )
+        if key_row:
+            agent_config["_llm_api_key"] = key_row.api_key
+            if key_row.base_url and not (agent_config.get("base_url") or agent_config.get("openai_base_url")):
+                agent_config["_llm_base_url"] = key_row.base_url
+    return agent_config
 
 
 def _resolve_nested_agents(agent_config: dict, db: Session, current_user: User) -> dict:
@@ -62,7 +84,7 @@ def _resolve_nested_agents(agent_config: dict, db: Session, current_user: User) 
         # Permission: own agents or public
         if sub.owner_id != current_user.id and not getattr(sub, "is_public", False):
             continue
-        sub_cfg = _build_agent_config(sub, current_user)
+        sub_cfg = _build_agent_config(sub, current_user, db)
         # Prevent immediate re-nesting of the same set unless explicitly desired
         nested.append(sub_cfg)
 
@@ -90,7 +112,7 @@ async def run_agent_endpoint(
     if current_user.credits < 1:
         raise HTTPException(status_code=402, detail="Insufficient credits to run agent")
 
-    agent_config = _build_agent_config(agent, current_user)
+    agent_config = _build_agent_config(agent, current_user, db)
     agent_config = _resolve_nested_agents(agent_config, db, current_user)
     # Resolve any saved MCP server references in tools_config
     try:
@@ -179,7 +201,7 @@ async def stream_agent_endpoint(
     if current_user.credits < 1:
         raise HTTPException(status_code=402, detail="Insufficient credits to run agent")
 
-    agent_config = _build_agent_config(agent, current_user)
+    agent_config = _build_agent_config(agent, current_user, db)
     agent_config = _resolve_nested_agents(agent_config, db, current_user)
     # Resolve any saved MCP server references in tools_config
     try:
@@ -320,7 +342,7 @@ async def evaluate_agent(
     if agent.owner_id != current_user.id and not agent.is_public:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    agent_config = _build_agent_config(agent, current_user)
+    agent_config = _build_agent_config(agent, current_user, db)
 
     try:
         result = await run_agent(agent_config, request.input)
@@ -367,7 +389,7 @@ async def batch_evaluate_agent(
     if agent.owner_id != current_user.id and not agent.is_public:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    agent_config = _build_agent_config(agent, current_user)
+    agent_config = _build_agent_config(agent, current_user, db)
 
     results = []
     scores = []

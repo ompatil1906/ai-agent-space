@@ -10,6 +10,7 @@ from app.models.user import (
     ToolApproval,
     ApiKey,
     MCPServer,
+    ProviderKey,
 )
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "ToolApproval",
     "ApiKey",
     "MCPServer",
+    "ProviderKey",
 ]
