@@ -2,7 +2,7 @@
 Advanced LangGraph-based agent runtime with streaming, memory, MCP tools,
 sandboxed execution tools, long-horizon planning, Reflexion-style
 self-correction with confidence estimation, and multi-agent orchestration
-(single / sequential / supervisor / parallel / debate / map_reduce / consensus / hierarchical / plan_execute).
+(single / sequential / supervisor / parallel / debate / map_reduce / consensus / hierarchical / plan_execute / ensemble).
 
 Memory: Uses MemorySaver by default. Switches to PostgresSaver when
 DATABASE_URL is PostgreSQL and the package is installed (production-ready).
@@ -1274,6 +1274,93 @@ def build_plan_execute_graph(agent_config: Dict[str, Any], tools: Optional[List[
     return workflow.compile(checkpointer=checkpointer)
 
 
+def build_ensemble_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
+    """
+    Ensemble multi-agent pattern.
+    Specialists run in parallel and each reports a self-assessed confidence score (0-100).
+    A synthesizer produces a confidence-weighted final answer, explicitly noting disagreements.
+    """
+    wf = agent_config.get("workflow_config") or {}
+    sub_agents = wf.get("sub_agents") or []
+    if len(sub_agents) < 2:
+        return build_single_agent_graph(agent_config, tools)
+
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    temperature = agent_config.get("temperature", 0.4)
+    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
+    llm = get_llm(model_name, temperature, base_url)
+    if tools:
+        llm = llm.bind_tools(tools)
+
+    workflow = StateGraph(AgentState)
+
+    async def specialists_node(state: AgentState):
+        """Run all specialists concurrently, each reporting confidence."""
+        import asyncio
+
+        async def run_one(sa: Dict[str, Any]):
+            name = sa.get("name", "specialist")
+            base_prompt = sa.get("system_prompt", "You are an independent specialist. Provide a clear, well-reasoned answer.")
+            prompt = (
+                base_prompt
+                + "\n\nAfter your answer, end with a new line: Confidence: XX\n"
+                "where XX is an integer from 0 to 100 representing your confidence in the answer."
+            )
+            enhanced = get_enhanced_system_prompt(prompt, agent_config, state)
+            messages = [SystemMessage(content=enhanced)] + state["messages"]
+            try:
+                response = await llm.ainvoke(messages)
+                response.additional_kwargs = response.additional_kwargs or {}
+                response.additional_kwargs["agent"] = name
+                return response
+            except Exception as e:
+                logger.warning(f"Ensemble specialist {name} failed: {e}")
+                err = AIMessage(content=f"[{name} error]: {str(e)}\nConfidence: 0")
+                err.additional_kwargs = {"agent": name}
+                return err
+
+        results = await asyncio.gather(*[run_one(sa) for sa in sub_agents])
+        return {"messages": list(results)}
+
+    def synthesizer_node(state: AgentState):
+        """Produce a confidence-weighted synthesis, noting disagreements."""
+        specialist_outputs = []
+        for m in state["messages"]:
+            if isinstance(m, AIMessage) and getattr(m, "additional_kwargs", {}).get("agent"):
+                agent_name = m.additional_kwargs.get("agent", "specialist")
+                specialist_outputs.append(f"[{agent_name}]:\n{m.content}")
+
+        synth_prompt = (
+            "You are an ensemble synthesizer. You have received independent answers from multiple specialists, "
+            "each ending with a Confidence: XX line (0-100).\n\n"
+            "Your job:\n"
+            "1. Parse the confidence scores from each specialist.\n"
+            "2. Weight the answers by their reported confidence (higher confidence carries more weight).\n"
+            "3. Identify points of agreement and material disagreements.\n"
+            "4. Produce a single, coherent final answer that reflects the confidence-weighted consensus.\n"
+            "5. Explicitly note any significant disagreements and the confidence levels involved.\n"
+            "6. End your response with an overall estimated confidence: Overall Confidence: YY\n\n"
+            "Specialist answers:\n\n" + "\n\n---\n\n".join(specialist_outputs)
+        )
+        enhanced = get_enhanced_system_prompt(synth_prompt, agent_config, state)
+        # Keep only the original user messages (no specialist outputs in context for synthesizer)
+        messages = [SystemMessage(content=enhanced)] + [
+            m for m in state["messages"] if not getattr(m, "additional_kwargs", {}).get("agent")
+        ]
+        response = llm.invoke(messages)
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = "synthesizer"
+        return {"messages": [response]}
+
+    workflow.add_node("specialists", specialists_node)
+    workflow.add_node("synthesizer", synthesizer_node)
+    workflow.set_entry_point("specialists")
+    workflow.add_edge("specialists", "synthesizer")
+    workflow.add_edge("synthesizer", END)
+
+    return workflow.compile(checkpointer=checkpointer)
+
+
 def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """Dispatch to the correct graph builder based on workflow_config.type."""
     wf_type = (agent_config.get("workflow_config") or {}).get("type", "single")
@@ -1293,6 +1380,8 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
         return build_plan_execute_graph(agent_config, tools)
     if wf_type == "hierarchical":
         return build_hierarchical_graph(agent_config, tools)
+    if wf_type == "ensemble":
+        return build_ensemble_graph(agent_config, tools)
     return build_single_agent_graph(agent_config, tools)
 
 

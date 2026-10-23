@@ -27,7 +27,7 @@ interface WorkflowVisualizerProps {
 function NodeCard({ title, subtitle, type, children }: { title: string; subtitle?: string; type: string; children?: React.ReactNode }) {
   const color =
     type === "supervisor" || type === "hierarchical" ? "border-blue-500" :
-    type === "parallel" || type === "map_reduce" ? "border-purple-500" :
+    type === "parallel" || type === "map_reduce" || type === "ensemble" ? "border-purple-500" :
     type === "debate" || type === "consensus" ? "border-orange-500" :
     type === "sequential" ? "border-green-500" :
     type === "plan_execute" ? "border-teal-500" : "border-gray-400";

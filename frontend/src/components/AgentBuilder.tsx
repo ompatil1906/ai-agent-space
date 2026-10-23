@@ -107,7 +107,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [longtermEnabled, setLongtermEnabled] = useState(initial?.memory_config?.longterm_enabled ?? false);
   const [longtermK, setLongtermK] = useState<number>(initial?.memory_config?.longterm_k ?? 5);
   const [sharedMemory, setSharedMemory] = useState(initial?.memory_config?.shared ?? false);
-  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "consensus" | "hierarchical" | "plan_execute">(
+  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "consensus" | "hierarchical" | "plan_execute" | "ensemble">(
     initial?.workflow_config?.type || "single"
   );
   const [subAgents, setSubAgents] = useState<SubAgent[]>(() => {
@@ -295,7 +295,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       setLongtermK(Number(mem.longterm?.k ?? 5));
       setSharedMemory(!!mem.longterm?.shared);
       const wf = doc.workflow || {};
-      const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "consensus", "hierarchical", "plan_execute"];
+      const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "consensus", "hierarchical", "plan_execute", "ensemble"];
       if (wf.type && types.includes(wf.type)) setWorkflowType(wf.type);
       if (wf.type === "hierarchical" && Array.isArray(wf.teams)) {
         setSubAgents(
@@ -834,6 +834,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <SelectItem value="consensus">Consensus Multi-Agent (Independent + Synthesis)</SelectItem>
                     <SelectItem value="debate">Debate Multi-Agent (Pro/Con + Judge)</SelectItem>
                     <SelectItem value="map_reduce">Map-Reduce (Parallel Specialists + Synthesizer)</SelectItem>
+                    <SelectItem value="ensemble">Ensemble (Confidence-Weighted Specialists)</SelectItem>
                     <SelectItem value="hierarchical">Hierarchical (Manager → Teams)</SelectItem>
                     <SelectItem value="plan_execute">Plan-Execute (Long-horizon Planning)</SelectItem>
                   </SelectContent>
@@ -844,7 +845,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 <div className="space-y-4 rounded-lg border border-border p-4">
                   <div className="flex justify-between items-center">
                     <h3 className="font-mono text-sm text-muted-foreground uppercase">
-                      {workflowType === "hierarchical" ? "Teams (Manager → Teams)" : workflowType === "map_reduce" ? "Mapper Specialists" : "Sub-Agents / Workers"}
+                      {workflowType === "hierarchical" ? "Teams (Manager → Teams)" : (workflowType === "map_reduce" || workflowType === "ensemble") ? "Specialists (Parallel)" : "Sub-Agents / Workers"}
                     </h3>
                     <Button type="button" size="sm" variant="outline" onClick={addSubAgent}>
                       {workflowType === "hierarchical" ? "Add Team" : "Add Sub-Agent"}
