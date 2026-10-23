@@ -3,7 +3,8 @@
 import MultiAgentTimeline from "@/components/MultiAgentTimeline";
 import { useEffect, useState, useRef, Suspense } from "react";
 import { useParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -518,15 +519,15 @@ function AgentRunContent() {
           )}
         </div>
         <div className="flex gap-2 mt-4">
-          <Button variant="outline" size="sm" asChild>
-            <a href={`/agents/${agentId}/versions`}>Versions</a>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <a href={`/agents/${agentId}/evaluations`}>Evaluations</a>
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <a href={`/agents`}>All Agents</a>
-          </Button>
+          <Link href={`/agents/${agentId}/versions`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Versions
+          </Link>
+          <Link href={`/agents/${agentId}/evaluations`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+            Evaluations
+          </Link>
+          <Link href="/agents" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            All Agents
+          </Link>
         </div>
       </div>
 
@@ -722,7 +723,8 @@ function AgentRunContent() {
               <Button
                 size="sm"
                 onClick={() => {
-                  setThreadId(String(selectedRun.id));
+                  const tid = selectedRun.thread_id || String(selectedRun.id);
+                  loadThread(tid);
                   setSelectedRun(null);
                 }}
               >

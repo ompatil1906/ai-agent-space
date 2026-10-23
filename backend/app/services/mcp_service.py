@@ -244,11 +244,6 @@ class MCPService:
         except Exception as e:
             return {"healthy": False, "error": str(e)}
 
-
-# Singleton
-mcp_service = MCPService()
-
-
     async def resolve_tools_config(
         self,
         tools_config: List[Dict[str, Any]],
@@ -281,3 +276,7 @@ mcp_service = MCPService()
             else:
                 resolved.append(cfg)
         return resolved
+
+
+# Singleton
+mcp_service = MCPService()

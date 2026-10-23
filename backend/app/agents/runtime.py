@@ -21,6 +21,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 from langgraph.prebuilt import ToolNode
 
+from app.core.config import settings
 from app.services.approval_service import (
     create_approval_request,
     wait_for_approval_db,

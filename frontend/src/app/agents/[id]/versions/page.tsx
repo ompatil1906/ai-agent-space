@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -144,9 +144,9 @@ function VersionsContent() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href={`/agents/${agentId}`}>← Back to Agent</Link>
-          </Button>
+          <Link href={`/agents/${agentId}`} className={buttonVariants({ variant: "outline" })}>
+            ← Back to Agent
+          </Link>
           <Button onClick={() => setShowCreate(true)}>Create Snapshot</Button>
         </div>
       </div>

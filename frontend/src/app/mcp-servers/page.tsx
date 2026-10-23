@@ -120,9 +120,7 @@ export default function MCPServersPage() {
           <p className="text-muted-foreground">Save reusable MCP server configurations for your agents.</p>
         </div>
         <Dialog open={showCreate} onOpenChange={setShowCreate}>
-          <DialogTrigger asChild>
-            <Button>Register Server</Button>
-          </DialogTrigger>
+          <DialogTrigger render={<Button>Register Server</Button>} />
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Register MCP Server</DialogTitle>

@@ -439,6 +439,10 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
     setSubAgents(next);
   };
 
+  const removeSubAgent = (index: number) => {
+    setSubAgents(subAgents.filter((_, i) => i !== index));
+  };
+
   const addSpecialist = (teamIndex: number) => {
     const next = [...subAgents];
     const team = next[teamIndex];
@@ -981,7 +985,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     </Button>
                     {registeredServers.length > 0 && (
                       <div className="flex gap-2 items-center">
-                        <Select value={selectedServerId} onValueChange={setSelectedServerId}>
+                        <Select value={selectedServerId} onValueChange={(v: any) => setSelectedServerId(v ?? "")}>
                           <SelectTrigger className="w-[200px]">
                             <SelectValue placeholder="From registry..." />
                           </SelectTrigger>

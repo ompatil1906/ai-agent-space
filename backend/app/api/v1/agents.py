@@ -335,7 +335,7 @@ def delete_agent_memory(
 @router.post("/{agent_id}/memories/consolidate")
 def consolidate_agent_memories(
     agent_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Consolidate long-term memories into denser summaries for the current user on this agent."""
@@ -358,7 +358,7 @@ def consolidate_agent_memories(
 async def add_agent_knowledge(
     agent_id: int,
     payload: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Add a document (raw text) to the agent's knowledge base.
@@ -396,7 +396,7 @@ async def add_agent_knowledge(
 @router.get("/{agent_id}/knowledge")
 def list_agent_knowledge(
     agent_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """List knowledge-base documents/chunks for this agent."""
@@ -433,7 +433,7 @@ def list_agent_knowledge(
 def delete_agent_knowledge_source(
     agent_id: int,
     source_name: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
     """Delete all knowledge chunks belonging to a named source."""
