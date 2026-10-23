@@ -1,4 +1,9 @@
 ## Advanced Session Update (Agent Builder Polish)
+## Latest Session Progress
+- Added MultiAgentTimeline component for clearer live multi-agent activity visualization during runs.
+- Integrated into agent run page to show per-agent steps alongside the existing event stream.
+- Improves observability for supervisor, hierarchical, debate, plan-execute, and other multi-agent patterns.
+
 - Fixed critical JSX syntax error in AgentBuilder workflow type Select (plan_execute item was nested incorrectly).
 - Expanded starter templates: added Plan-Execute Researcher and Hierarchical Research Team with pre-filled sub-agents/teams.
 - Template selector now correctly applies sub-agents / specialists for multi-agent workflows.

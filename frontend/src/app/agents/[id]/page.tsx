@@ -1,5 +1,6 @@
 "use client";
 
+import MultiAgentTimeline from "@/components/MultiAgentTimeline";
 import { useEffect, useState, useRef, Suspense } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -599,6 +600,7 @@ function AgentRunContent() {
 
       <Card className="mb-6">
         <CardHeader>
+          <MultiAgentTimeline events={events} className="mb-4" />
           <CardTitle className="font-mono text-sm text-muted-foreground">live tool calls & events</CardTitle>
         </CardHeader>
         <CardContent>
