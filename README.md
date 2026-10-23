@@ -1,3 +1,13 @@
+## Advanced Session Update (Agent Knowledge Base)
+- **Agent Knowledge Base / Document RAG**: Users can upload text documents to an agent's knowledge base. Documents are chunked, embedded (Chroma + OpenAI embeddings), and stored with type=knowledge.
+- New endpoints:
+  - `POST /api/v1/agents/{id}/knowledge` — add document text
+  - `GET /api/v1/agents/{id}/knowledge` — list sources and chunks
+  - `DELETE /api/v1/agents/{id}/knowledge/{source_name}` — remove a source
+- Knowledge excerpts are automatically retrieved and injected into the system prompt (alongside long-term memories) when `memory_config.longterm_enabled` is true.
+- Frontend: Knowledge Base card on the agent run page with paste-to-add UI, source listing, and delete.
+- Fixed duplicate `store_interaction_memory` definition in the agent runtime.
+
 
 ## Advanced Session Update (Memory Consolidation)
 - **Long-term Memory Consolidation**: New `POST /api/v1/agents/{id}/memories/consolidate` endpoint. Summarizes raw memories into denser consolidated entries using the LLM. UI button available on the agent run page. Helps keep retrieval focused and token-efficient for long-running agents.

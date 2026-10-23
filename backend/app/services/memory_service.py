@@ -306,6 +306,118 @@ class LongTermMemoryService:
             return {"processed": 0, "created": 0, "available": True, "error": str(e)}
 
 
+
+    def add_knowledge_document(
+        self,
+        agent_id: int,
+        user_id: int,
+        text: str,
+        source_name: str = "document",
+        shared_namespace: Optional[str] = None,
+        chunk_size: int = 800,
+        chunk_overlap: int = 100,
+    ) -> List[str]:
+        """Chunk a document and store each chunk as long-term knowledge memory.
+        
+        Metadata type='knowledge' distinguishes it from interaction memories.
+        Returns list of created memory IDs.
+        """
+        if not self._available or not text or not text.strip():
+            return []
+        try:
+            from langchain_text_splitters import RecursiveCharacterTextSplitter
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                separators=["\n\n", "\n", ". ", " ", ""],
+            )
+            chunks = splitter.split_text(text.strip())
+            ids = []
+            for i, chunk in enumerate(chunks):
+                if not chunk.strip():
+                    continue
+                mid = self.add_memory(
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    text=chunk,
+                    metadata={
+                        "type": "knowledge",
+                        "source": source_name,
+                        "chunk_index": i,
+                        "total_chunks": len(chunks),
+                    },
+                    shared_namespace=shared_namespace,
+                )
+                if mid:
+                    ids.append(mid)
+            logger.info("Added knowledge document '%s' as %d chunks for agent %s", source_name, len(ids), agent_id)
+            return ids
+        except Exception as e:
+            logger.warning("Failed to add knowledge document: %s", e)
+            return []
+
+    def list_knowledge(
+        self,
+        agent_id: int,
+        user_id: int,
+        shared_namespace: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """List knowledge-base entries (type=knowledge) for an agent+user."""
+        if not self._available:
+            return []
+        try:
+            where = self._namespace_key(agent_id, user_id, shared_namespace)
+            # Chroma where filters are limited; we filter in Python after get
+            results = self.collection.get(where=where, limit=limit * 2, include=["documents", "metadatas"])
+            items = []
+            docs = results.get("documents") or []
+            metas = results.get("metadatas") or []
+            ids = results.get("ids") or []
+            for mid, doc, meta in zip(ids, docs, metas):
+                if meta and str(meta.get("type")) == "knowledge":
+                    items.append({
+                        "id": mid,
+                        "text": doc,
+                        "source": meta.get("source"),
+                        "chunk_index": meta.get("chunk_index"),
+                        "metadata": meta,
+                    })
+                    if len(items) >= limit:
+                        break
+            return items
+        except Exception as e:
+            logger.warning("Failed to list knowledge: %s", e)
+            return []
+
+    def delete_knowledge_source(
+        self,
+        agent_id: int,
+        user_id: int,
+        source_name: str,
+        shared_namespace: Optional[str] = None,
+    ) -> int:
+        """Delete all knowledge chunks belonging to a given source name."""
+        if not self._available:
+            return 0
+        try:
+            where = self._namespace_key(agent_id, user_id, shared_namespace)
+            results = self.collection.get(where=where, include=["metadatas"])
+            ids_to_del = []
+            metas = results.get("metadatas") or []
+            ids = results.get("ids") or []
+            for mid, meta in zip(ids, metas):
+                if meta and str(meta.get("type")) == "knowledge" and str(meta.get("source")) == source_name:
+                    ids_to_del.append(mid)
+            if ids_to_del:
+                self.collection.delete(ids=ids_to_del)
+            logger.info("Deleted %d knowledge chunks for source '%s'", len(ids_to_del), source_name)
+            return len(ids_to_del)
+        except Exception as e:
+            logger.warning("Failed to delete knowledge source: %s", e)
+            return 0
+
+
 def get_memory_service() -> LongTermMemoryService:
     global _memory_service
     if _memory_service is None:

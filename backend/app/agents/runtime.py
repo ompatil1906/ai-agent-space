@@ -334,39 +334,37 @@ def get_enhanced_system_prompt(
         memories = get_memory_service().retrieve(
             int(agent_id), int(user_id), query, k=k, shared_namespace=shared_ns
         )
-        if not memories:
+        # Also pull knowledge-base chunks (type=knowledge) if present
+        knowledge = []
+        try:
+            kb_items = get_memory_service().list_knowledge(
+                int(agent_id), int(user_id), shared_namespace=shared_ns, limit=20
+            )
+            # Simple relevance: re-use the same embedding retrieve but filter, or just include recent
+            # Prefer a dedicated retrieve that we can enhance later; for now pull top via existing retrieve
+            # and also inject a few knowledge snippets if the query matches source names or just top ones.
+            if kb_items:
+                # Use the same retrieve path but we can filter later; for depth we also do a second retrieve
+                # on a knowledge-aware query. For simplicity include the most recent knowledge chunks.
+                knowledge = [item["text"] for item in kb_items[:3]]
+        except Exception:
+            knowledge = []
+
+        parts = []
+        if memories:
+            label = "Relevant shared team memories" if shared_ns else "Relevant long-term memories"
+            mem_block = "\n".join(f"- {m}" for m in memories)
+            parts.append(f"{label} (use if helpful):\n{mem_block}")
+        if knowledge:
+            kb_block = "\n".join(f"- {k}" for k in knowledge)
+            parts.append(f"Relevant knowledge base excerpts:\n{kb_block}")
+        if not parts:
             return prompt
-        label = "Relevant shared team memories" if shared_ns else "Relevant long-term memories"
-        mem_block = "\n".join(f"- {m}" for m in memories)
-        return f"{prompt}\n\n{label} (use if helpful):\n{mem_block}"
+        return f"{prompt}\n\n" + "\n\n".join(parts)
     except Exception as e:
         logger.debug("Long-term memory retrieval skipped: %s", e)
         return prompt
 
-
-def store_interaction_memory(
-    agent_config: Dict[str, Any],
-    user_input: str,
-    agent_output: str,
-) -> None:
-    """Persist a short interaction summary as long-term memory."""
-    mem_cfg = agent_config.get("memory_config") or {}
-    if not mem_cfg.get("longterm_enabled"):
-        return
-    agent_id = agent_config.get("id")
-    user_id = agent_config.get("user_id")
-    if not agent_id or not user_id or not user_input or not agent_output:
-        return
-    try:
-        from app.services.memory_service import get_memory_service
-        text = f"User: {user_input[:800]}\nAssistant: {agent_output[:1500]}"
-        svc = get_memory_service()
-        if len(text) > 600 and hasattr(svc, "summarize_and_store"):
-            svc.summarize_and_store(int(agent_id), int(user_id), text)
-        else:
-            svc.add_memory(int(agent_id), int(user_id), text, metadata={"source": "interaction"})
-    except Exception as e:
-        logger.debug("Failed to store long-term memory: %s", e)
 
 def store_interaction_memory(
     agent_config: Dict[str, Any],

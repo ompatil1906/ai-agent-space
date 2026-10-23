@@ -353,6 +353,107 @@ def consolidate_agent_memories(
     return {"ok": True, **result}
 
 
+
+@router.post("/{agent_id}/knowledge")
+async def add_agent_knowledge(
+    agent_id: int,
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Add a document (raw text) to the agent's knowledge base.
+    
+    Body: {"text": "...", "source_name": "optional-filename.md"}
+    Chunks are embedded and stored for retrieval during agent runs.
+    """
+    agent = db.query(Agent).filter(Agent.id == agent_id, Agent.owner_id == current_user.id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    text = (payload.get("text") or "").strip()
+    source_name = (payload.get("source_name") or "document").strip() or "document"
+    if not text:
+        raise HTTPException(status_code=400, detail="text is required")
+
+    from app.services.memory_service import get_memory_service
+    mem_cfg = agent.memory_config or {}
+    shared_ns = f"team_{agent_id}" if mem_cfg.get("shared") else None
+    ids = get_memory_service().add_knowledge_document(
+        agent_id=agent_id,
+        user_id=current_user.id,
+        text=text,
+        source_name=source_name,
+        shared_namespace=shared_ns,
+    )
+    return {
+        "ok": True,
+        "agent_id": agent_id,
+        "source_name": source_name,
+        "chunks_created": len(ids),
+        "ids": ids,
+    }
+
+
+@router.get("/{agent_id}/knowledge")
+def list_agent_knowledge(
+    agent_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List knowledge-base documents/chunks for this agent."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.owner_id != current_user.id and not agent.is_public:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    from app.services.memory_service import get_memory_service
+    mem_cfg = agent.memory_config or {}
+    shared_ns = f"team_{agent_id}" if mem_cfg.get("shared") else None
+    items = get_memory_service().list_knowledge(
+        agent_id=agent_id,
+        user_id=current_user.id,
+        shared_namespace=shared_ns,
+    )
+    # Group by source for nicer UI
+    by_source: dict = {}
+    for item in items:
+        src = item.get("source") or "unknown"
+        by_source.setdefault(src, []).append(item)
+    return {
+        "agent_id": agent_id,
+        "sources": [
+            {"source": src, "chunk_count": len(chunks), "chunks": chunks}
+            for src, chunks in by_source.items()
+        ],
+        "total_chunks": len(items),
+    }
+
+
+@router.delete("/{agent_id}/knowledge/{source_name}")
+def delete_agent_knowledge_source(
+    agent_id: int,
+    source_name: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete all knowledge chunks belonging to a named source."""
+    agent = db.query(Agent).filter(Agent.id == agent_id, Agent.owner_id == current_user.id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    from app.services.memory_service import get_memory_service
+    mem_cfg = agent.memory_config or {}
+    shared_ns = f"team_{agent_id}" if mem_cfg.get("shared") else None
+    deleted = get_memory_service().delete_knowledge_source(
+        agent_id=agent_id,
+        user_id=current_user.id,
+        source_name=source_name,
+        shared_namespace=shared_ns,
+    )
+    return {"ok": True, "deleted": deleted, "source_name": source_name, "agent_id": agent_id}
+
+
+
 @router.get("/{agent_id}/memories")
 def list_agent_memories(
     agent_id: int,

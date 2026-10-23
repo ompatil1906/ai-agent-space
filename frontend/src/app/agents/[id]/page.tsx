@@ -33,6 +33,10 @@ function AgentRunContent() {
   const [finalOutput, setFinalOutput] = useState("");
   const [loading, setLoading] = useState(false);
   const [memories, setMemories] = useState<any[]>([]);
+  const [knowledgeSources, setKnowledgeSources] = useState<any[]>([]);
+  const [kbText, setKbText] = useState("");
+  const [kbSourceName, setKbSourceName] = useState("");
+  const [loadingKnowledge, setLoadingKnowledge] = useState(false);
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [token, setToken] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(true);
@@ -104,7 +108,73 @@ function AgentRunContent() {
     }
   };
 
-    useEffect(() => {
+  
+  const loadKnowledge = async () => {
+    if (!agentId) return;
+    setLoadingKnowledge(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/agents/${agentId}/knowledge`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setKnowledgeSources(data.sources || []);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingKnowledge(false);
+    }
+  };
+
+  const addKnowledge = async () => {
+    if (!kbText.trim()) return;
+    setLoadingKnowledge(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/agents/${agentId}/knowledge`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: kbText,
+          source_name: kbSourceName.trim() || "document",
+        }),
+      });
+      if (res.ok) {
+        setKbText("");
+        setKbSourceName("");
+        await loadKnowledge();
+      } else {
+        console.error(await res.text());
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingKnowledge(false);
+    }
+  };
+
+  const deleteKnowledgeSource = async (source: string) => {
+    if (!confirm(`Delete all knowledge chunks from source "${source}"?`)) return;
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/agents/${agentId}/knowledge/${encodeURIComponent(source)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        await loadKnowledge();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
     const t = localStorage.getItem("token");
     if (!t) {
       window.location.href = "/login";
@@ -133,6 +203,10 @@ function AgentRunContent() {
       .then((r) => r.ok ? r.json() : [])
       .then(setThreads)
       .catch(() => setThreads([]));
+
+    // Load memories and knowledge base
+    loadMemories();
+    loadKnowledge();
   }, [agentId]);
 
   useEffect(() => {
@@ -687,6 +761,59 @@ function AgentRunContent() {
               </div>
             )}
           </div>
+
+          <div className="mt-6 border-t pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium">Knowledge Base</h3>
+              <Button size="sm" variant="outline" onClick={loadKnowledge} disabled={loadingKnowledge}>
+                {loadingKnowledge ? "Loading..." : "Refresh"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-2">
+              Upload documents (text) to give the agent permanent context. Chunks are retrieved semantically during runs when long-term memory is enabled.
+            </p>
+            <div className="space-y-2 mb-3">
+              <input
+                type="text"
+                placeholder="Source name (e.g. product-docs.md)"
+                value={kbSourceName}
+                onChange={(e) => setKbSourceName(e.target.value)}
+                className="w-full text-xs border rounded px-2 py-1"
+              />
+              <Textarea
+                placeholder="Paste document text here (markdown, notes, specs...)"
+                value={kbText}
+                onChange={(e) => setKbText(e.target.value)}
+                className="text-xs min-h-[80px]"
+              />
+              <Button size="sm" onClick={addKnowledge} disabled={loadingKnowledge || !kbText.trim()}>
+                {loadingKnowledge ? "Adding..." : "Add to Knowledge Base"}
+              </Button>
+            </div>
+            {knowledgeSources.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No knowledge documents yet.</p>
+            ) : (
+              <div className="space-y-2 max-h-40 overflow-auto">
+                {knowledgeSources.map((src: any) => (
+                  <div key={src.source} className="text-xs border rounded p-2 flex justify-between items-start gap-2">
+                    <div>
+                      <div className="font-medium">{src.source}</div>
+                      <div className="text-muted-foreground">{src.chunk_count} chunk(s)</div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-red-500"
+                      onClick={() => deleteKnowledgeSource(src.source)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
         </CardContent>
       </Card>
     </div>
