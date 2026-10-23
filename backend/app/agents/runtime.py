@@ -334,19 +334,13 @@ def get_enhanced_system_prompt(
         memories = get_memory_service().retrieve(
             int(agent_id), int(user_id), query, k=k, shared_namespace=shared_ns
         )
-        # Also pull knowledge-base chunks (type=knowledge) if present
+        # Also pull relevant knowledge-base chunks (type=knowledge) semantically
         knowledge = []
         try:
-            kb_items = get_memory_service().list_knowledge(
-                int(agent_id), int(user_id), shared_namespace=shared_ns, limit=20
+            knowledge = get_memory_service().retrieve(
+                int(agent_id), int(user_id), query, k=min(k, 4),
+                shared_namespace=shared_ns, memory_type="knowledge",
             )
-            # Simple relevance: re-use the same embedding retrieve but filter, or just include recent
-            # Prefer a dedicated retrieve that we can enhance later; for now pull top via existing retrieve
-            # and also inject a few knowledge snippets if the query matches source names or just top ones.
-            if kb_items:
-                # Use the same retrieve path but we can filter later; for depth we also do a second retrieve
-                # on a knowledge-aware query. For simplicity include the most recent knowledge chunks.
-                knowledge = [item["text"] for item in kb_items[:3]]
         except Exception:
             knowledge = []
 

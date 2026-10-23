@@ -113,6 +113,7 @@ class LongTermMemoryService:
         query: str,
         k: int = 5,
         shared_namespace: Optional[str] = None,
+        memory_type: Optional[str] = None,
     ) -> List[str]:
         """Retrieve the top-k most relevant memory documents for the query.
 
@@ -124,6 +125,8 @@ class LongTermMemoryService:
         try:
             emb = self.embeddings.embed_query(query)
             where = self._namespace_key(agent_id, user_id, shared_namespace)
+            if memory_type:
+                where["type"] = memory_type
             results = self.collection.query(
                 query_embeddings=[emb],
                 n_results=k,
