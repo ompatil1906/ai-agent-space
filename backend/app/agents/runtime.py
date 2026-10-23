@@ -2,7 +2,7 @@
 Advanced LangGraph-based agent runtime with streaming, memory, MCP tools,
 sandboxed execution tools, long-horizon planning, Reflexion-style
 self-correction with confidence estimation, and multi-agent orchestration
-(single / sequential / supervisor / parallel / debate / map_reduce / consensus / hierarchical / plan_execute / ensemble / group_chat).
+(single / sequential / supervisor / parallel / debate / map_reduce / consensus / hierarchical / plan_execute / ensemble / group_chat / critique_revise).
 
 Memory: Uses MemorySaver by default. Switches to PostgresSaver when
 DATABASE_URL is PostgreSQL and the package is installed (production-ready).
@@ -29,6 +29,17 @@ from app.services.approval_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class AgentState(TypedDict):
+    """Shared state for all agent graphs. Messages use the add operator for accumulation."""
+    messages: Annotated[List[BaseMessage], operator.add]
+    attempts: int
+    # Optional fields used by specific multi-agent patterns
+    rounds: int
+    next_speaker: Optional[str]
+    concluded: bool
+
 
 # ---------------------------------------------------------------------------
 # Human-in-the-Loop tool approval (persistent, multi-process safe)
@@ -1469,6 +1480,157 @@ def build_group_chat_graph(agent_config: Dict[str, Any], tools: Optional[List[An
     return workflow.compile(checkpointer=checkpointer)
 
 
+def build_critique_revise_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
+    """
+    Critique-Revise multi-agent pattern (Reflexion-inspired loop).
+
+    Flow:
+    1. Generator produces an initial draft answer (with optional tools).
+    2. Critic reviews the draft, identifies issues, and assigns a quality score (0-100).
+    3. If score >= threshold or max rounds reached → finish.
+    4. Otherwise Reviser improves the answer using the critique.
+    5. Loop back to Critic for the next round (up to max_rounds, default 2).
+
+    Configurable via workflow_config:
+    - max_rounds: int (default 2)
+    - quality_threshold: int (default 85)
+    - generator_prompt / critic_prompt / reviser_prompt (optional overrides)
+    """
+    wf = agent_config.get("workflow_config") or {}
+    max_rounds = int(wf.get("max_rounds") or 2)
+    quality_threshold = int(wf.get("quality_threshold") or 85)
+
+    model_name = agent_config.get("model_name", "gpt-4o-mini")
+    temperature = agent_config.get("temperature", 0.5)
+    base_url = agent_config.get("base_url") or agent_config.get("openai_base_url")
+    llm = get_llm(model_name, temperature, base_url)
+    if tools:
+        llm = llm.bind_tools(tools)
+
+    workflow = StateGraph(AgentState)
+
+    def _extract_score(text: str) -> int:
+        """Best-effort parse of a quality score from critic output."""
+        import re
+        match = re.search(r"(?:score|quality|rating)\s*[:\-]?\s*(\d{1,3})", text, re.IGNORECASE)
+        if match:
+            try:
+                return max(0, min(100, int(match.group(1))))
+            except ValueError:
+                pass
+        # Fallback: look for any number 0-100 near the end
+        nums = re.findall(r"\b(\d{1,3})\b", text)
+        for n in reversed(nums):
+            val = int(n)
+            if 0 <= val <= 100:
+                return val
+        return 70  # neutral default
+
+    async def generator_node(state: AgentState):
+        gen_prompt = wf.get("generator_prompt") or (
+            "You are a careful specialist. Produce a clear, well-structured, and accurate answer "
+            "to the user's request. Use tools if available and helpful. Be thorough but concise."
+        )
+        enhanced = get_enhanced_system_prompt(gen_prompt, agent_config, state)
+        messages = [SystemMessage(content=enhanced)] + state["messages"]
+        response = await llm.ainvoke(messages)
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = "generator"
+        response.additional_kwargs["phase"] = "draft"
+        return {"messages": [response], "rounds": 0}
+
+    async def critic_node(state: AgentState):
+        # Find the latest generator/reviser output
+        latest_answer = ""
+        for m in reversed(state["messages"]):
+            if isinstance(m, AIMessage) and getattr(m, "additional_kwargs", {}).get("agent") in ("generator", "reviser"):
+                latest_answer = str(m.content or "")
+                break
+
+        critic_prompt = wf.get("critic_prompt") or (
+            "You are a rigorous critic. Review the draft answer against the original user request.\n\n"
+            "Identify:\n"
+            "- Factual inaccuracies or unsupported claims\n"
+            "- Missing important points or incomplete coverage\n"
+            "- Clarity, structure, and tone issues\n"
+            "- Opportunities for stronger reasoning or better examples\n\n"
+            "Then assign an overall quality score from 0 to 100.\n"
+            "Format the last line exactly as: Score: XX\n\n"
+            f"Draft answer to critique:\n{latest_answer}"
+        )
+        enhanced = get_enhanced_system_prompt(critic_prompt, agent_config, state)
+        # Critic sees original user messages + the draft
+        user_msgs = [m for m in state["messages"] if isinstance(m, HumanMessage)]
+        messages = [SystemMessage(content=enhanced)] + user_msgs
+        response = await llm.ainvoke(messages)
+        score = _extract_score(str(response.content or ""))
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = "critic"
+        response.additional_kwargs["score"] = score
+        current_rounds = int(state.get("rounds") or 0) + 1
+        return {"messages": [response], "rounds": current_rounds}
+
+    async def reviser_node(state: AgentState):
+        # Collect latest draft + critique
+        draft = ""
+        critique = ""
+        for m in reversed(state["messages"]):
+            if isinstance(m, AIMessage):
+                agent = getattr(m, "additional_kwargs", {}).get("agent")
+                if agent == "critic" and not critique:
+                    critique = str(m.content or "")
+                elif agent in ("generator", "reviser") and not draft:
+                    draft = str(m.content or "")
+                if draft and critique:
+                    break
+
+        reviser_prompt = wf.get("reviser_prompt") or (
+            "You are a skilled reviser. Improve the draft answer using the critic's feedback.\n\n"
+            "Rules:\n"
+            "- Address every major issue raised by the critic.\n"
+            "- Preserve accurate content from the original draft.\n"
+            "- Produce a complete, polished final answer (do not just list changes).\n"
+            "- If the critic score was already high, make only targeted improvements.\n\n"
+            f"Original draft:\n{draft}\n\n"
+            f"Critic feedback:\n{critique}"
+        )
+        enhanced = get_enhanced_system_prompt(reviser_prompt, agent_config, state)
+        user_msgs = [m for m in state["messages"] if isinstance(m, HumanMessage)]
+        messages = [SystemMessage(content=enhanced)] + user_msgs
+        response = await llm.ainvoke(messages)
+        response.additional_kwargs = response.additional_kwargs or {}
+        response.additional_kwargs["agent"] = "reviser"
+        response.additional_kwargs["phase"] = "revision"
+        return {"messages": [response]}
+
+    def route_after_critic(state: AgentState) -> str:
+        # Look at the most recent critic message for the score
+        score = 0
+        for m in reversed(state["messages"]):
+            if isinstance(m, AIMessage) and getattr(m, "additional_kwargs", {}).get("agent") == "critic":
+                score = int(getattr(m, "additional_kwargs", {}).get("score") or 0)
+                break
+        rounds = int(state.get("rounds") or 0)
+        if score >= quality_threshold or rounds >= max_rounds:
+            return "finish"
+        return "revise"
+
+    workflow.add_node("generator", generator_node)
+    workflow.add_node("critic", critic_node)
+    workflow.add_node("reviser", reviser_node)
+
+    workflow.set_entry_point("generator")
+    workflow.add_edge("generator", "critic")
+    workflow.add_conditional_edges(
+        "critic",
+        route_after_critic,
+        {"revise": "reviser", "finish": END},
+    )
+    workflow.add_edge("reviser", "critic")
+
+    return workflow.compile(checkpointer=checkpointer)
+
+
 def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] = None):
     """Dispatch to the correct graph builder based on workflow_config.type."""
     wf_type = (agent_config.get("workflow_config") or {}).get("type", "single")
@@ -1492,6 +1654,8 @@ def build_agent_graph(agent_config: Dict[str, Any], tools: Optional[List[Any]] =
         return build_ensemble_graph(agent_config, tools)
     if wf_type == "group_chat":
         return build_group_chat_graph(agent_config, tools)
+    if wf_type == "critique_revise":
+        return build_critique_revise_graph(agent_config, tools)
     return build_single_agent_graph(agent_config, tools)
 
 

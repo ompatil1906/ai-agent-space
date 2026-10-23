@@ -101,6 +101,14 @@ const TEMPLATES = [
       { name: "Implementer", description: "Practical next steps", system_prompt: "You turn ideas into concrete, actionable implementation steps." },
     ],
   },
+  {
+    name: "Critique-Revise Loop",
+    description: "Generator drafts, Critic scores & reviews, Reviser improves until quality threshold (Reflexion-style)",
+    system_prompt: "You coordinate a critique-revise loop to produce high-quality answers.",
+    model_name: "gpt-4o-mini",
+    workflow_type: "critique_revise" as const,
+    sub_agents: [],
+  },
 ];
 
 const DEFAULT_PROMPT = "You are a helpful AI assistant. You have access to tools when configured.";
@@ -119,7 +127,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
   const [longtermEnabled, setLongtermEnabled] = useState(initial?.memory_config?.longterm_enabled ?? false);
   const [longtermK, setLongtermK] = useState<number>(initial?.memory_config?.longterm_k ?? 5);
   const [sharedMemory, setSharedMemory] = useState(initial?.memory_config?.shared ?? false);
-  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "consensus" | "hierarchical" | "plan_execute" | "ensemble" | "group_chat">(
+  const [workflowType, setWorkflowType] = useState<"single" | "sequential" | "supervisor" | "parallel" | "debate" | "map_reduce" | "consensus" | "hierarchical" | "plan_execute" | "ensemble" | "group_chat" | "critique_revise">(
     initial?.workflow_config?.type || "single"
   );
   const [subAgents, setSubAgents] = useState<SubAgent[]>(() => {
@@ -307,7 +315,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
       setLongtermK(Number(mem.longterm?.k ?? 5));
       setSharedMemory(!!mem.longterm?.shared);
       const wf = doc.workflow || {};
-      const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "consensus", "hierarchical", "plan_execute", "ensemble", "group_chat"];
+      const types = ["single", "sequential", "supervisor", "parallel", "debate", "map_reduce", "consensus", "hierarchical", "plan_execute", "ensemble", "group_chat", "critique_revise"];
       if (wf.type && types.includes(wf.type)) setWorkflowType(wf.type);
       if (wf.type === "hierarchical" && Array.isArray(wf.teams)) {
         setSubAgents(
@@ -848,6 +856,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <SelectItem value="map_reduce">Map-Reduce (Parallel Specialists + Synthesizer)</SelectItem>
                     <SelectItem value="ensemble">Ensemble (Confidence-Weighted Specialists)</SelectItem>
                     <SelectItem value="group_chat">Group Chat (Collaborative Discussion)</SelectItem>
+                    <SelectItem value="critique_revise">Critique-Revise (Generator → Critic → Reviser loop)</SelectItem>
                     <SelectItem value="hierarchical">Hierarchical (Manager → Teams)</SelectItem>
                     <SelectItem value="plan_execute">Plan-Execute (Long-horizon Planning)</SelectItem>
                   </SelectContent>

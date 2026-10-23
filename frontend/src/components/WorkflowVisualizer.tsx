@@ -30,7 +30,8 @@ function NodeCard({ title, subtitle, type, children }: { title: string; subtitle
     type === "parallel" || type === "map_reduce" || type === "ensemble" ? "border-purple-500" :
     type === "debate" || type === "consensus" ? "border-orange-500" :
     type === "sequential" ? "border-green-500" :
-    type === "plan_execute" ? "border-teal-500" : "border-gray-400";
+    type === "plan_execute" ? "border-teal-500" :
+    type === "critique_revise" ? "border-indigo-500" : "border-gray-400";
 
   return (
     <Card className={`border-2 ${color} shadow-sm`}>
