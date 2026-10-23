@@ -1,3 +1,6 @@
+## Latest Enhancement
+- **Ensemble Multi-Agent Pattern**: New `ensemble` workflow type. Specialists run in parallel and report self-assessed confidence scores. A synthesizer produces a confidence-weighted final answer, explicitly noting disagreements. Available in the Agent Builder and runtime.
+
 ## Latest Observability Enhancement
 - **Live Token & Cost Tracking in Agent Runner**: During and after streaming runs, the agent page now displays exact input/output/total tokens and estimated USD cost (from the `done` event usage payload). Falls back to approximate token count from output length while streaming. Complements the dashboard cost analytics.
 - **Richer Multi-Agent Timeline**: Timeline now groups tool calls, tool results, confidence, and reflections per agent (or tools bucket), with clearer icons and more context.
@@ -59,7 +62,7 @@ A modern, advanced platform for creating, configuring, running, and sharing AI a
 - **Memory Windowing**: `memory_config.max_messages` trims conversation history before each LLM call (default 20).
 - **Long-Term Semantic Memory**: Optional vector-store memory (ChromaDB + embeddings). Set `memory_config.longterm_enabled=true` and `longterm_k` (default 5). Relevant past interactions are retrieved and injected into the system prompt. Interactions are automatically stored after each run.\n- **Shared Multi-Agent Memory**: Set `memory_config.shared=true` (requires long-term memory) to store/retrieve memories under a team namespace (`team_{agent_id}`). All specialists in hierarchical/supervisor workflows can read and write the same memory. Dedicated tools `store_shared_memory` / `retrieve_shared_memory` are automatically available.
 - **Long-Term Memory Management**: `GET /api/v1/agents/{id}/memories` to list stored semantic memories; existing clear endpoint for cleanup. Memories are scoped per user+agent.
-- **Multi-Agent Patterns**: single, sequential, supervisor, parallel, debate, map-reduce, hierarchical (manager → teams with nested workflows), and consensus (independent specialists + consensus synthesizer). All workers/specialists are full ReAct tool-using subgraphs (MCP + sandbox + optional reflection). Visual builder supports nested teams for hierarchical.
+- **Multi-Agent Patterns**: single, sequential, supervisor, parallel, debate, map-reduce, hierarchical (manager → teams with nested workflows), consensus (independent specialists + consensus synthesizer), and ensemble (confidence-weighted specialists + synthesizer). All workers/specialists are full ReAct tool-using subgraphs (MCP + sandbox + optional reflection). Visual builder supports nested teams for hierarchical.
 - **Streaming Events**: tokens, thoughts (planning/reasoning), tool calls/results, and multi-agent step progress.
 - **MCP Tool, Resource & Prompt Discovery**: Real tool use via official MCP SDK + adapters. Agents also receive live `list_mcp_resources`, `read_mcp_resource`, `list_mcp_prompts`, and `get_mcp_prompt` tools. Builder UI can preview tools, resources, and prompts.
 - **Versioning, Evaluation, Marketplace**: Snapshots, LLM-as-judge, ratings, publish/clone/buy.
