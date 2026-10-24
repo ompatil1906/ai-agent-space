@@ -127,10 +127,11 @@ See `docker-compose.yml` for a full stack including database.
 
 ## Architecture
 
-- Clean modular design: API / Services / Agents / Core
-- Fully typed
+- Clean modular design: API / Services / Agents / Core / Models
+- Models split by domain (user, agent, run, marketplace, mcp) for maintainability
+- Fully typed with Pydantic schemas
 - Easy to extend with new tools and agent patterns
-- Production-leaning
+- Production-leaning with Alembic migrations, Docker Compose, and security best practices
 
 ## Contributing
 
@@ -138,7 +139,7 @@ Contributions are welcome! Please open an issue or pull request.
 
 ## License
 
-Open source — see LICENSE file (to be added) or repository for details.
+Open source — see [LICENSE](LICENSE) file.
 
 ---
 
