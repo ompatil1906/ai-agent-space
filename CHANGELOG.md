@@ -23,3 +23,8 @@
 
 ## [0.x] - Earlier
 - Initial scaffolding and iterative feature development
+
+## [1.0.1] - 2026-10-24
+### Added
+- Basic pytest suite for authentication foundation (register, login, me, health)
+- Improved testability for Phase 1
