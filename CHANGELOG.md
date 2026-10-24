@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.1] - 2026-10-24
+### Added
+- Basic pytest suite for authentication foundation (register, login, me, health)
+- Improved testability for Phase 1
+- Database connectivity verification in `/health` endpoint
+
+### Changed
+- API version bumped to 1.0.1
+- Health check now returns database status for better observability
+
 ## [1.0.0] - 2026-10-24
 
 ### Added
@@ -23,8 +33,3 @@
 
 ## [0.x] - Earlier
 - Initial scaffolding and iterative feature development
-
-## [1.0.1] - 2026-10-24
-### Added
-- Basic pytest suite for authentication foundation (register, login, me, health)
-- Improved testability for Phase 1

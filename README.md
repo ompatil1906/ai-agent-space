@@ -175,4 +175,4 @@ Built for the future of autonomous AI agents.
 
 ## Status
 
-**v1.0.0** — Solid foundation complete. Phases 1–3 implemented. Marketplace, dashboard, and evaluation features active. See [CHANGELOG.md](CHANGELOG.md).
+**v1.0.1** — Solid foundation complete with hardened health checks and auth tests. Phases 1–3 implemented. Marketplace, dashboard, and evaluation features active. See [CHANGELOG.md](CHANGELOG.md).

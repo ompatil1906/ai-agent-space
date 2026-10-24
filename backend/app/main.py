@@ -1,12 +1,14 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.api.v1 import api_router
 from app.core.config import settings
-from app.core.database import Base, engine
+from app.core.database import Base, engine, get_db
 
 # Configure logging
 logging.basicConfig(
@@ -15,7 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-API_VERSION = "1.0.0"
+API_VERSION = "1.0.1"
 
 
 @asynccontextmanager
@@ -66,5 +68,16 @@ def read_root():
 
 
 @app.get("/health")
-def health_check():
-    return {"status": "ok", "version": API_VERSION}
+def health_check(db: Session = Depends(get_db)):
+    """Health check that also verifies database connectivity."""
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception as e:
+        logger.error("Database health check failed: %s", e)
+        db_status = "error"
+    return {
+        "status": "ok" if db_status == "ok" else "degraded",
+        "version": API_VERSION,
+        "database": db_status,
+    }

@@ -31,7 +31,7 @@ def test_register_and_login():
         "/api/v1/auth/register",
         json={"email": "test@example.com", "password": "testpassword123", "full_name": "Test User"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.json()
     assert data["email"] == "test@example.com"
     assert "id" in data
@@ -57,4 +57,7 @@ def test_register_and_login():
 def test_health():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["database"] == "ok"
+    assert "version" in data
