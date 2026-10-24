@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.3] - 2026-10-24
+### Added
+- Professional Makefile for easy foundation setup, install, dev, test, and Docker commands
+- Improved developer experience for Phase 1 onboarding
+
+### Changed
+- README Quick Start now highlights Makefile as recommended path
+
+
 ## [1.0.2] - 2026-10-24
 ### Added
 - Professional .env.example with all required configuration variables for backend, LLM providers, CORS, sandbox, and frontend

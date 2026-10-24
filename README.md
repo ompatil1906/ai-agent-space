@@ -98,6 +98,15 @@ The place where the best autonomous agents live and are shared. Users can:
 
 ## Quick Start
 
+### Using Makefile (recommended for local development)
+```bash
+make install          # Install all deps
+make dev              # Run backend + frontend
+# Or separately: make dev-backend ## Quick Start## Quick Start make dev-frontend
+```
+
+### Manual
+
 ### Prerequisites
 - Python 3.11+
 - Node.js 18+
