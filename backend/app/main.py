@@ -9,14 +9,19 @@ from app.core.config import settings
 from app.core.database import Base, engine
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
 logger = logging.getLogger(__name__)
+
+API_VERSION = "1.0.0"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("Starting AI Agent Space API")
+    logger.info("Starting AI Agent Space API v%s", API_VERSION)
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables ensured")
     yield
@@ -26,8 +31,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
+    version=API_VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
+    description="Open-source platform for creating, running, and sharing autonomous AI agents with MCP, sandboxed execution, and multi-agent workflows.",
 )
 
 # Set up CORS middleware
@@ -50,10 +57,14 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to AI Agent Space API", "status": "running", "version": "1.0.0"}
+    return {
+        "message": "Welcome to AI Agent Space API",
+        "status": "running",
+        "version": API_VERSION,
+        "docs": "/docs",
+    }
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
-
+    return {"status": "ok", "version": API_VERSION}

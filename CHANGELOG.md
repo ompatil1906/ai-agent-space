@@ -3,21 +3,23 @@
 ## [1.0.0] - 2026-10-24
 
 ### Added
-- Complete project foundation with FastAPI backend and Next.js frontend
-- User authentication with JWT (email/password)
-- Agent CRUD with versioning
-- LangGraph-based agent runtime supporting multiple orchestration patterns
-- Full MCP integration (tools, resources, prompts)
-- Docker-based sandboxed code execution
-- Marketplace with publish, clone, ratings
-- Observability: traces, token usage, cost tracking, evaluations
-- Dashboard with stats
-- Multi-provider LLM support
-- Alembic migrations
-- Docker Compose setup
-- Tests for core endpoints
+- Solid foundation: modular project structure, domain-split SQLAlchemy models, JWT authentication, basic agent CRUD
+- Agent Builder with visual + YAML support and multi-agent workflow patterns
+- LangGraph-based runtime with ReAct, Plan-and-Execute, Reflexion, and advanced multi-agent graphs
+- Full MCP integration (stdio, SSE, streamable HTTP) with tool/resource/prompt discovery
+- Docker-based sandboxed code execution with resource limits
+- Marketplace (publish, browse, clone, ratings, credits)
+- Observability: run traces, token/cost tracking, evaluations, dashboard
+- Streaming agent runs via SSE
+- Provider keys and API key management
 
-### Technical
-- Clean modular architecture
-- Type-safe with Pydantic
-- Production-leaning security and error handling
+### Changed
+- Professionalized README with clear architecture, phases, and setup instructions
+- Improved API root and health endpoints with versioning
+- Cleaner logging configuration
+
+### Fixed
+- Various stability and typing improvements across models and services
+
+## [0.x] - Earlier
+- Initial scaffolding and iterative feature development
