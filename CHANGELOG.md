@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.2] - 2026-10-24
+### Added
+- Professional .env.example with all required configuration variables for backend, LLM providers, CORS, sandbox, and frontend
+- Clear documentation for environment setup to make the foundation easier to run locally or deploy
+
+### Fixed
+- Relaxed ormsgpack pin to >=1.12.2 to support Python 3.10/3.11 environments (1.13.0 dropped 3.10 support)
+- Improved dependency installability for the foundation
+
+### Changed
+- Foundation strengthened for broader compatibility and easier onboarding/production readiness
+
 ## [1.0.1] - 2026-10-24
 ### Added
 - Basic pytest suite for authentication foundation (register, login, me, health)
@@ -33,11 +45,3 @@
 
 ## [0.x] - Earlier
 - Initial scaffolding and iterative feature development
-
-## [1.0.2] - 2026-10-24
-### Added
-- Professional .env.example with all required configuration variables for backend, LLM providers, CORS, sandbox, and frontend
-- Clear documentation for environment setup to make the foundation easier to run locally or deploy
-
-### Changed
-- Foundation strengthened for easier onboarding and production readiness
