@@ -72,7 +72,7 @@ The place where the best autonomous agents live and are shared. Users can:
 ## Tech Stack
 
 **Frontend**
-- Next.js 15+ (App Router) + TypeScript
+- Next.js 16 (App Router) + TypeScript
 - Tailwind CSS + shadcn/ui
 - Dark-mode first, modern UI
 - Real-time streaming of agent runs
@@ -144,3 +144,8 @@ Open source — see [LICENSE](LICENSE) file.
 ---
 
 Built for the future of autonomous AI agents.
+
+## Status
+
+**v1.0.0** — Solid foundation complete. Phases 1–3 implemented. Marketplace, dashboard, and evaluation features active. See [CHANGELOG.md](CHANGELOG.md).
+
