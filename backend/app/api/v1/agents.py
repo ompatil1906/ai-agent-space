@@ -15,8 +15,35 @@ from app.schemas import (
     AgentVersionCreate,
 )
 from app.services.mcp_service import mcp_service
+from app.services import ledger
+from app.services.execution_auth import ensure_unique_slug, slugify
+from app.models import AgentPricingPlan
 
 router = APIRouter()
+
+
+def _sync_listing_state(agent: Agent) -> None:
+    """Keep legacy visibility flags in sync with the canonical status column."""
+    from app.core.config import settings as _settings
+
+    if agent.status == "published":
+        agent.is_published = True
+        agent.is_public = True
+        agent.published_at = agent.published_at or datetime.utcnow()
+    elif agent.status in ("pending_review", "rejected", "suspended"):
+        agent.is_published = False
+    elif agent.status == "draft":
+        # Direct publish toggle (legacy PATCH): publish only when moderation is off;
+        # other states must not silently go live.
+        if agent.is_published and (_settings.MARKETPLACE_MODERATION or "off") != "manual":
+            agent.status = "published"
+            agent.is_published = True
+            agent.is_public = True
+            agent.published_at = agent.published_at or datetime.utcnow()
+        else:
+            agent.is_published = bool(agent.is_published)
+    if agent.is_published:
+        agent.is_public = True
 
 
 def _create_version(db: Session, agent: Agent, created_by: Optional[int] = None, change_note: str = "Auto snapshot") -> AgentVersion:
@@ -91,13 +118,39 @@ def create_agent(
     agent_in: AgentCreate,
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
+    data = agent_in.model_dump()
+    requested_slug = (data.pop("slug", None) or "").strip()
+    slug = slugify(requested_slug) if requested_slug else ensure_unique_slug(db, data.get("name") or "agent")
     agent = Agent(
-        **agent_in.model_dump(),
+        **data,
+        slug=slug,
         owner_id=current_user.id,
     )
+    _sync_listing_state(agent)
+    if not agent.status:
+        agent.status = "draft"
+    # Legacy credit price is deprecated; keep 0 unless explicitly passed
     db.add(agent)
+    # Creator provisioning: profile + role promotion (idempotent)
+    profile = ledger.ensure_creator_profile(db, current_user.id)
+    if current_user.role in (None, "", "customer"):
+        current_user.role = "creator"
     db.commit()
     db.refresh(agent)
+
+    # Default pricing plan: free & active, so the agent is runnable immediately
+    if not db.query(AgentPricingPlan).filter(AgentPricingPlan.agent_id == agent.id).first():
+        db.add(
+            AgentPricingPlan(
+                agent_id=agent.id,
+                model="free",
+                currency=ledger.platform_currency_default(),
+                amount_minor=0,
+                is_active=True,
+            )
+        )
+        db.commit()
+
     # Initial version
     _create_version(db, agent, created_by=current_user.id, change_note="Initial version")
     db.commit()
@@ -133,6 +186,13 @@ def update_agent(
     update_data = agent_in.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(agent, field, value)
+    # Slug: only the owner may set it explicitly; normalize + ensure uniqueness
+    if "slug" in update_data:
+        new_slug = slugify(update_data.get("slug") or "") or ensure_unique_slug(db, update_data.get("name") or agent.name, exclude_agent_id=agent.id)
+        agent.slug = ensure_unique_slug(db, new_slug, exclude_agent_id=agent.id) if new_slug != agent.slug else new_slug
+    elif not agent.slug:
+        agent.slug = ensure_unique_slug(db, agent.name, exclude_agent_id=agent.id)
+    _sync_listing_state(agent)
     db.add(agent)
     db.commit()
     db.refresh(agent)

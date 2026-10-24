@@ -1,5 +1,9 @@
 from datetime import datetime
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, JSON
+import re
+import uuid
+
+import sqlalchemy as sa
+from sqlalchemy import Boolean, Column, DateTime, event, Float, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -13,12 +17,18 @@ class User(Base):
     full_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
-    credits = Column(Integer, default=1000)  # marketplace credits
+    credits = Column(Integer, default=1000)  # legacy in-app credits (deprecated, kept for data preservation)
+    # Marketplace role: customer (default) | creator | admin. Admins also have is_superuser.
+    role = Column(String, default="customer", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     agents = relationship("Agent", back_populates="owner", cascade="all, delete-orphan")
     runs = relationship("AgentRun", back_populates="user", cascade="all, delete-orphan")
+
+    @property
+    def is_admin(self) -> bool:
+        return bool(self.is_superuser) or (self.role or "") == "admin"
 
 
 class Agent(Base):
@@ -41,11 +51,43 @@ class Agent(Base):
     advanced_config = Column(JSON, default=dict)  # {"planning_enabled": bool, "reflection_enabled": bool, "max_reflections": int}
 
     is_public = Column(Boolean, default=False)
-    is_published = Column(Boolean, default=False)
-    price = Column(Integer, default=0)  # in cents or credits
+    is_published = Column(Boolean, default=False)  # kept in sync with status == "published"
+    # --- Public listing (marketplace) ---
+    # `price` is the legacy credit price, preserved for data back-compat. Real
+    # pricing lives in AgentPricingPlan rows.
+    price = Column(Integer, default=0)
+    slug = Column(String, unique=True, index=True, nullable=False)
+    tagline = Column(String, nullable=True)                      # one-line value proposition
+    avatar_url = Column(String, nullable=True)
+    cover_image_url = Column(String, nullable=True)
+    category_id = Column(Integer, ForeignKey("agent_categories.id"), nullable=True, index=True)
+    tags = Column(JSON, default=list)                             # ["excel", "finance", ...]
+    problem_statement = Column(Text, nullable=True)               # the problem this agent solves
+    features = Column(JSON, default=list)                          # ["...", ...]
+    use_cases = Column(JSON, default=list)                         # ["...", ...]
+    target_audience = Column(Text, nullable=True)
+    example_prompts = Column(JSON, default=list)                   # [{"title":, "prompt":, "sample_output":}]
+    faqs = Column(JSON, default=list)                              # [{"question":, "answer":}]
+    usage_instructions = Column(Text, nullable=True)
+    refund_window_days = Column(Integer, nullable=True)            # refund terms for buyers
+    status = Column(String, default="draft", index=True)           # draft|pending_review|published|rejected|suspended
+    published_at = Column(DateTime, nullable=True)
+    view_count = Column(Integer, default=0, nullable=False)
+    is_featured = Column(Boolean, default=False)
+    featured_at = Column(DateTime, nullable=True)
+    moderation_note = Column(Text, nullable=True)                  # admin review notes / rejection reason
+
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    owner = relationship("User", back_populates="agents")
+    runs = relationship("AgentRun", back_populates="agent", cascade="all, delete-orphan")
+    categories = relationship("AgentCategory")
+    pricing_plans = relationship(
+        "AgentPricingPlan", back_populates="agent", cascade="all, delete-orphan"
+    )
+    purchases = relationship("Purchase", back_populates="agent")
 
     owner = relationship("User", back_populates="agents")
     runs = relationship("AgentRun", back_populates="agent", cascade="all, delete-orphan")
@@ -55,6 +97,30 @@ class Agent(Base):
         cascade="all, delete-orphan",
         order_by="AgentVersion.version_number.desc()",
     )
+
+
+def _slugify_raw(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+    slug = re.sub(r"-{2,}", "-", slug)
+    return slug[:60] or "agent"
+
+
+@event.listens_for(Agent, "before_insert")
+def agent_default_slug(mapper, connection, target: "Agent") -> None:
+    """Safety net: every agent needs a unique slug even when created via direct
+    ORM construction (tests/scripts). The API path assigns human-friendly slugs
+    via services.execution_auth.ensure_unique_slug before this runs."""
+    if getattr(target, "slug", None):
+        return
+    existing = {
+        row[0]
+        for row in connection.execute(sa.select(Agent.slug)).fetchall()
+    }
+    base = _slugify_raw(target.name or "agent")
+    candidate = base
+    while candidate in existing:
+        candidate = f"{base}-{uuid.uuid4().hex[:6]}"
+    target.slug = candidate
 
 
 class AgentRun(Base):
@@ -76,6 +142,13 @@ class AgentRun(Base):
     total_tokens = Column(Integer, nullable=True, default=0)
     estimated_cost_usd = Column(Float, nullable=True, default=0.0)  # rough estimate based on model pricing
     thread_id = Column(String, index=True, nullable=True)  # LangGraph checkpointer thread for multi-turn memory
+    mode = Column(String, default="chat", index=True)  # chat | automation (Devin-style direct task)
+    title = Column(String, nullable=True)  # task title for automation runs
+    # --- Marketplace execution accounting ---
+    entitlement_id = Column(Integer, ForeignKey("entitlements.id"), nullable=True, index=True)
+    execution_cost_minor = Column(Integer, default=0, nullable=False)  # amount actually charged (0 = owner/free)
+    charge_status = Column(String, default="none", nullable=False)  # none | charged | refunded
+    client_request_id = Column(String, index=True, nullable=True)   # client idempotency key for run retries
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -114,6 +187,7 @@ class AgentRating(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     rating = Column(Integer, nullable=False)  # 1-5
     review = Column(Text, nullable=True)
+    verified_purchase = Column(Boolean, default=False)  # reviewer held an entitlement at review time
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

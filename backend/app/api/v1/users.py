@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_active_user
-from app.models import Agent, AgentRun, AgentEvaluation, CreditTransaction, User
+from app.models import Agent, AgentRun, AgentEvaluation, CreditTransaction, Entitlement, Purchase, Subscription, User
 from app.schemas import UserPublic, UserStats
+from app.services import payments
 
 router = APIRouter()
 
@@ -92,6 +93,31 @@ def get_user_stats(
         .all()
     )
 
+    # --- Real-money stats (paid purchases + live entitlements) ---
+    spent_minor = (
+        db.query(func.coalesce(func.sum(Purchase.amount_minor - func.coalesce(Purchase.refunded_minor, 0)), 0))
+        .filter(Purchase.buyer_id == current_user.id, Purchase.status.in_(["paid", "partially_refunded"]))
+        .scalar()
+    )
+    purchases_count = (
+        db.query(func.count(Purchase.id))
+        .filter(Purchase.buyer_id == current_user.id, Purchase.status.in_(["paid", "partially_refunded"]))
+        .scalar()
+        or 0
+    )
+    entitlements_count = (
+        db.query(func.count(Entitlement.id))
+        .filter(Entitlement.buyer_id == current_user.id, Entitlement.status == "active")
+        .scalar()
+        or 0
+    )
+    active_subscriptions = (
+        db.query(func.count(Subscription.id))
+        .filter(Subscription.buyer_id == current_user.id, Subscription.status == "active")
+        .scalar()
+        or 0
+    )
+
     return UserStats(
         agents_count=len(agents),
         published_count=sum(1 for a in agents if a.is_published),
@@ -102,6 +128,12 @@ def get_user_stats(
         avg_steps=round(avg_steps, 2) if avg_steps is not None else None,
         evaluations_count=int(eval_stats[0] or 0),
         avg_evaluation_score=round(float(eval_stats[1]), 2) if eval_stats[1] is not None else None,
+        # real-money stats
+        currency=payments.platform_currency(),
+        spent_minor=int(spent_minor or 0),
+        purchases_count=int(purchases_count),
+        entitlements_count=int(entitlements_count),
+        active_subscriptions=int(active_subscriptions),
         credits=current_user.credits,
         earnings=int(ledger or 0),
         spend=int(spend or 0),

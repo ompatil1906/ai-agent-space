@@ -4,35 +4,134 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { toast } from "sonner";
+import {
+  ChevronDownIcon,
+  LayoutDashboardIcon,
+  LogOutIcon,
+  MenuIcon,
+  SettingsIcon,
+  ShieldCheckIcon,
+  StoreIcon,
+  WalletIcon,
+  XIcon,
+  BotIcon,
+} from "lucide-react";
 import { cn } from "cn";
+import { API_BASE, AUTH_EVENT, api, clearToken, getToken, messageFromError } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+interface Me {
+  email: string;
+  full_name?: string | null;
+  role?: string;
+  is_superuser?: boolean;
+}
 
 const NAV_LINKS = [
-  { href: "/agents", label: "Agents" },
-  { href: "/marketplace", label: "Marketplace" },
-  { href: "/mcp-servers", label: "MCP Servers" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/settings", label: "Settings" },
-];
+  { href: "/marketplace", label: "Marketplace", icon: StoreIcon },
+  { href: "/agents", label: "My Agents", icon: BotIcon },
+  { href: "/purchases", label: "Purchases", authOnly: true },
+  { href: "/earnings", label: "Earnings", authOnly: true, icon: WalletIcon },
+  { href: "/mcp-servers", label: "Tools" },
+  { href: "/dashboard", label: "Dashboard", authOnly: true, icon: LayoutDashboardIcon },
+  { href: "/settings", label: "Settings", authOnly: true, icon: SettingsIcon },
+] as const;
+
+/** Module-level session cache — the header fetches `/users/me` once per token. */
+let cachedMe: Me | null = null;
+let cacheToken: string | null = null;
+
+function initials(me: Me | null): string {
+  const source = me?.full_name?.trim() || me?.email || "";
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return source.slice(0, 2).toUpperCase() || "…";
+}
 
 function HeaderInner() {
   const [authed, setAuthed] = useState(false);
+  const [me, setMe] = useState<Me | null>(null);
+  const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
-    setAuthed(Boolean(localStorage.getItem("token")));
+    let cancelled = false;
+
+    const sync = async () => {
+      const token = await Promise.resolve(getToken());
+      if (cancelled) return;
+      if (!token) {
+        setAuthed(false);
+        setMe(null);
+        cachedMe = null;
+        cacheToken = null;
+        return;
+      }
+      if (token === cacheToken && cachedMe) {
+        setAuthed(true);
+        setMe(cachedMe);
+        return;
+      }
+      const user = await api<Me>("/users/me", { method: "GET" }).catch(() => null);
+      if (cancelled) return;
+      cacheToken = token;
+      cachedMe = user;
+      setAuthed(true);
+      setMe(user);
+    };
+
+    void sync();
+    window.addEventListener(AUTH_EVENT, sync);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(AUTH_EVENT, sync);
+    };
+  }, []);
+
+  // Close the mobile panel whenever a navigation happens.
+  useEffect(() => {
+    setOpen(false);
   }, [pathname]);
 
-  const logout = () => {
-    localStorage.removeItem("token");
+  const logout = async () => {
+    clearToken();
+    cachedMe = null;
+    cacheToken = null;
     setAuthed(false);
+    setMe(null);
+    toast.success("Signed out");
     window.location.href = "/login";
   };
 
+  const isAdmin = Boolean(me && (me.role === "admin" || me.is_superuser));
+  const links = NAV_LINKS.filter(
+    (l) => authed || !("authOnly" in l && l.authOnly)
+  );
+
+  const navLinkClass = (href: string) =>
+    cn(
+      "rounded-md px-3 py-1.5 text-sm transition-colors",
+      pathname === href || (href !== "/" && pathname.startsWith(href + "/"))
+        ? "text-foreground"
+        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+    );
+
   return (
-    <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-4 px-6">
-        <Link href="/" className="group flex items-center gap-2.5">
-          <div className="flex size-7 items-center justify-center rounded-lg border border-border/80 bg-zinc-950 p-1 shadow-sm transition-all group-hover:border-foreground/30 group-hover:scale-105">
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
+      <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-3 px-4 sm:px-6">
+        <Link href="/" className="group flex shrink-0 items-center gap-2.5">
+          <span className="flex size-7 items-center justify-center rounded-lg border border-border/80 bg-zinc-950 p-1 shadow-sm transition-transform duration-200 group-hover:scale-105">
             <Image
               src="/logos/icon.svg"
               alt="AI Agent Space logo"
@@ -41,55 +140,154 @@ function HeaderInner() {
               className="size-5 rounded-sm object-contain"
               priority
             />
-          </div>
+          </span>
           <span className="text-sm font-semibold tracking-tight">
             AI Agent Space
           </span>
         </Link>
 
-        <nav className="flex items-center gap-1">
-          {NAV_LINKS.map((link) => (
+        {/* Desktop nav */}
+        <nav className="ml-2 hidden items-center gap-0.5 lg:flex" aria-label="Primary">
+          {links.map((link) => (
+            <Link key={link.href} href={link.href} className={navLinkClass(link.href)}>
+              {link.label}
+            </Link>
+          ))}
+          {authed && isAdmin && (
+            <Link href="/admin" className={navLinkClass("/admin")}>
+              Admin
+            </Link>
+          )}
+        </nav>
+
+        <div className="ml-auto flex items-center gap-1.5">
+          <ThemeToggle />
+
+          {authed ? (
+            <>
+              <Button render={<Link href="/agents" />}>
+                <span data-icon="inline-start">
+                  <BotIcon className="size-4" />
+                </span>
+                New agent
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Account menu"
+                      className="gap-1.5 rounded-full"
+                    >
+                      <span className="flex size-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-semibold text-white">
+                        {initials(me)}
+                      </span>
+                      <ChevronDownIcon className="size-3 text-muted-foreground" />
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="flex flex-col items-start gap-0.5">
+                    <span className="max-w-44 truncate text-sm font-medium text-foreground">
+                      {me?.full_name?.trim() || me?.email}
+                    </span>
+                    <span className="max-w-44 truncate text-xs font-normal text-muted-foreground">
+                      {me?.email}
+                    </span>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    {authed && isAdmin && (
+                      <DropdownMenuItem render={<Link href="/admin" />}>
+                        <ShieldCheckIcon /> Admin console
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem render={<Link href="/dashboard" />}>
+                      <LayoutDashboardIcon /> Dashboard
+                    </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href="/purchases" />}>
+                      <StoreIcon /> Purchases
+                    </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href="/earnings" />}>
+                      <WalletIcon /> Earnings
+                    </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href="/settings" />}>
+                      <SettingsIcon /> Settings
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout} className="text-destructive">
+                    <LogOutIcon /> Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          ) : (
+            <div className="hidden items-center gap-2 sm:flex">
+              <Button variant="ghost" render={<Link href="/login" />}>
+                Log in
+              </Button>
+              <Button render={<Link href="/register" />}>Sign up free</Button>
+            </div>
+          )}
+
+          {/* Mobile menu toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
+            aria-expanded={open}
+            aria-controls="mobile-nav"
+            aria-label="Toggle navigation"
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? <XIcon className="size-4" /> : <MenuIcon className="size-4" />}
+          </Button>
+        </div>
+      </div>
+
+      {/* Mobile nav panel */}
+      <div
+        id="mobile-nav"
+        className={cn(
+          "border-border/70 border-t bg-background/95 backdrop-blur-md transition-all duration-200 lg:hidden",
+          open
+            ? "visible max-h-[420px] opacity-100"
+            : "invisible max-h-0 overflow-hidden border-t-0 opacity-0"
+        )}
+      >
+        <nav className="flex max-h-[420px] flex-col overflow-y-auto px-4 py-3" aria-label="Mobile">
+          {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               className={cn(
-                "rounded-lg px-3 py-1.5 text-sm transition-colors",
+                "rounded-lg px-3 py-2 text-sm transition-colors",
                 pathname.startsWith(link.href)
-                  ? "bg-muted text-foreground"
+                  ? "bg-muted font-medium text-foreground"
                   : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
               )}
             >
               {link.label}
             </Link>
           ))}
-          <span className="mx-2 hidden h-4 w-px bg-border sm:block" />
+          {authed && isAdmin && (
+            <Link href="/admin" className={cn(navLinkClass("/admin"), "px-3 py-2")}>
+              Admin
+            </Link>
+          )}
           {authed ? (
-            <button
-              onClick={logout}
-              className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-            >
-              Log out
-            </button>
+            <Button variant="outline" className="mt-2" onClick={logout}>
+              <LogOutIcon className="size-4" /> Log out
+            </Button>
           ) : (
-            <>
-              <Link
-                href="/login"
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-sm transition-colors",
-                  pathname === "/login"
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                )}
-              >
+            <div className="mt-2 flex flex-col gap-2 sm:hidden">
+              <Button variant="outline" render={<Link href="/login" />}>
                 Log in
-              </Link>
-              <Link
-                href="/register"
-                className="ml-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-              >
-                Sign up
-              </Link>
-            </>
+              </Button>
+              <Button render={<Link href="/register" />}>Sign up free</Button>
+            </div>
           )}
         </nav>
       </div>

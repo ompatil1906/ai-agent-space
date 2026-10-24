@@ -12,6 +12,22 @@ from app.models.user import (
     MCPServer,
     ProviderKey,
 )
+from app.models.marketplace import (
+    CreatorProfile,
+    AgentCategory,
+    AgentPricingPlan,
+    Purchase,
+    Entitlement,
+    Subscription,
+    PaymentTransaction,
+    RefundDispute,
+    EarningsLedgerEntry,
+    Payout,
+    WebhookEvent,
+    AuditLog,
+    ModerationReport,
+    PlatformSetting,
+)
 
 __all__ = [
     "User",
@@ -25,4 +41,18 @@ __all__ = [
     "ApiKey",
     "MCPServer",
     "ProviderKey",
+    "CreatorProfile",
+    "AgentCategory",
+    "AgentPricingPlan",
+    "Purchase",
+    "Entitlement",
+    "Subscription",
+    "PaymentTransaction",
+    "RefundDispute",
+    "EarningsLedgerEntry",
+    "Payout",
+    "WebhookEvent",
+    "AuditLog",
+    "ModerationReport",
+    "PlatformSetting",
 ]

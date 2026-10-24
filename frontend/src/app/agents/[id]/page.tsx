@@ -1,17 +1,35 @@
 "use client";
 
-import MultiAgentTimeline from "@/components/MultiAgentTimeline";
 import { useEffect, useState, useRef, Suspense } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-
-import { API_BASE } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { API_BASE, api, getToken } from "@/lib/api";
+import AgentTasksPanel from "@/components/AgentTasksPanel";
 import WorkflowVisualizer from "@/components/WorkflowVisualizer";
+import AgentLanding from "@/components/marketplace/agent-landing";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface StreamEvent {
   usage?: {
@@ -34,6 +52,7 @@ interface StreamEvent {
 
 function AgentRunContent() {
   const params = useParams();
+  const router = useRouter();
   const agentId = params.id as string;
   const [agent, setAgent] = useState<any>(null);
   const [input, setInput] = useState("");
@@ -47,17 +66,23 @@ function AgentRunContent() {
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
   const [loadingMemories, setLoadingMemories] = useState(false);
   const [token, setToken] = useState<string | null>(null);
-  const [streaming, setStreaming] = useState(true);
+  const [streaming] = useState(true); // SSE output; threads toggle kept for future opt-out
   const [currentThreadId, setCurrentThreadId] = useState<string>("");
   const [chatHistory, setChatHistory] = useState<{ role: "user" | "assistant"; content: string; events?: StreamEvent[] }[]>([]);
   const [threads, setThreads] = useState<any[]>([]);
   const [finalConfidence, setFinalConfidence] = useState<number | null>(null);
   const [runUsage, setRunUsage] = useState<{input_tokens: number; output_tokens: number; total_tokens: number; estimated_cost_usd: number} | null>(null);
   const [runs, setRuns] = useState<any[]>([]);
-  const [selectedRun, setSelectedRun] = useState<any>(null);
+  // Which finished turns have their "what the agent did" panel expanded (by index)
+  const [openActivity, setOpenActivity] = useState<Record<number, boolean>>({});
+  const [mode, setMode] = useState<"chat" | "automation">("chat");
   const [pendingApprovals, setPendingApprovals] = useState<Record<string, {name: string; args: any}>>({});
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const outputRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   
@@ -65,56 +90,48 @@ function AgentRunContent() {
     if (!agentId) return;
     setLoadingMemories(true);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/agents/${agentId}/memories`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMemories(data.memories || []);
-      }
+      const data = await api<{ memories: any[] }>(`/agents/${agentId}/memories`);
+      setMemories(data.memories || []);
     } catch (e) {
-      console.error(e);
+      toast.error("Could not load memories", { description: (e as Error).message });
     } finally {
       setLoadingMemories(false);
     }
   };
 
   const deleteMemory = async (memoryId: string) => {
-    if (!confirm("Delete this memory?")) return;
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/agents/${agentId}/memories/${memoryId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setMemories((prev) => prev.filter((m) => m.id !== memoryId));
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    setConfirm({
+      title: "Delete this memory?",
+      description: "The agent will no longer use or see this memory in future runs.",
+      onConfirm: async () => {
+        try {
+          await api(`/agents/${agentId}/memories/${memoryId}`, { method: "DELETE" });
+          setMemories((prev) => prev.filter((m) => m.id !== memoryId));
+          toast.success("Memory deleted");
+        } catch (e) {
+          toast.error("Could not delete memory", { description: (e as Error).message });
+        }
+      },
+    });
   };
 
   const consolidateMemories = async () => {
-    if (!confirm("Consolidate memories into denser summaries?")) return;
-    setLoadingMemories(true);
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/agents/${agentId}/memories/consolidate`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        await loadMemories();
-      } else {
-        console.error(await res.text());
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingMemories(false);
-    }
+    setConfirm({
+      title: "Compress old memories?",
+      description: "Dense summaries replace fragmented memories — same facts, less storage. This can't be undone.",
+      onConfirm: async () => {
+        setLoadingMemories(true);
+        try {
+          await api(`/agents/${agentId}/memories/consolidate`, { method: "POST" });
+          toast.success("Memories consolidated");
+          await loadMemories();
+        } catch (e) {
+          toast.error("Consolidation failed", { description: (e as Error).message });
+        } finally {
+          setLoadingMemories(false);
+        }
+      },
+    });
   };
 
   
@@ -122,16 +139,10 @@ function AgentRunContent() {
     if (!agentId) return;
     setLoadingKnowledge(true);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/agents/${agentId}/knowledge`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setKnowledgeSources(data.sources || []);
-      }
+      const data = await api<{ sources: any[] }>(`/agents/${agentId}/knowledge`);
+      setKnowledgeSources(data.sources || []);
     } catch (e) {
-      console.error(e);
+      toast.error("Could not load documents", { description: (e as Error).message });
     } finally {
       setLoadingKnowledge(false);
     }
@@ -141,87 +152,68 @@ function AgentRunContent() {
     if (!kbText.trim()) return;
     setLoadingKnowledge(true);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/agents/${agentId}/knowledge`, {
+      await api(`/agents/${agentId}/knowledge`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+        body: {
           text: kbText,
           source_name: kbSourceName.trim() || "document",
-        }),
+        },
       });
-      if (res.ok) {
-        setKbText("");
-        setKbSourceName("");
-        await loadKnowledge();
-      } else {
-        console.error(await res.text());
-      }
+      setKbText("");
+      setKbSourceName("");
+      toast.success("Document saved", { description: "The agent can read it during any task or chat." });
+      await loadKnowledge();
     } catch (e) {
-      console.error(e);
+      toast.error("Could not save document", { description: (e as Error).message });
     } finally {
       setLoadingKnowledge(false);
     }
   };
 
   const deleteKnowledgeSource = async (source: string) => {
-    if (!confirm(`Delete all knowledge chunks from source "${source}"?`)) return;
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/agents/${agentId}/knowledge/${encodeURIComponent(source)}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        await loadKnowledge();
-      }
-    } catch (e) {
-      console.error(e);
-    }
+    setConfirm({
+      title: `Delete “${source}”?`,
+      description: "All knowledge chunks from this source are removed permanently.",
+      onConfirm: async () => {
+        try {
+          await api(`/agents/${agentId}/knowledge/${encodeURIComponent(source)}`, { method: "DELETE" });
+          toast.success("Document deleted");
+          await loadKnowledge();
+        } catch (e) {
+          toast.error("Could not delete document", { description: (e as Error).message });
+        }
+      },
+    });
   };
 
   useEffect(() => {
-    const t = localStorage.getItem("token");
+    const t = getToken();
     if (!t) {
-      window.location.href = "/login";
+      router.replace("/login");
       return;
     }
     setToken(t);
     // Start a fresh thread by default
     setCurrentThreadId(crypto.randomUUID());
-    fetch(`${API_BASE}/agents/${agentId}`, {
-      headers: { Authorization: `Bearer ${t}` },
-    })
-      .then((r) => r.json())
-      .then(setAgent);
+    api(`/agents/${agentId}`)
+      .then(setAgent)
+      .catch(() => toast.error("Could not load agent", { description: "Check that this agent exists and is still yours." }));
 
     // Load conversation history and threads
-    fetch(`${API_BASE}/agents/${agentId}/runs`, {
-      headers: { Authorization: `Bearer ${t}` },
-    })
-      .then((r) => r.ok ? r.json() : [])
+    api<any[]>(`/agents/${agentId}/runs`)
       .then(setRuns)
       .catch(() => setRuns([]));
 
-    fetch(`${API_BASE}/agents/${agentId}/threads`, {
-      headers: { Authorization: `Bearer ${t}` },
-    })
-      .then((r) => r.ok ? r.json() : [])
+    api<any[]>(`/agents/${agentId}/threads`)
       .then(setThreads)
       .catch(() => setThreads([]));
 
     // Load memories and knowledge base
     loadMemories();
     loadKnowledge();
-  }, [agentId]);
+  }, [agentId, router]);
 
   useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [events, finalOutput, chatHistory]);
 
@@ -247,13 +239,19 @@ function AgentRunContent() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${getToken()}`,
           },
           body: JSON.stringify(body),
           signal: abortControllerRef.current.signal,
         });
 
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+          const detail = await res
+            .json()
+            .then((d) => (d && typeof d.detail === "string" ? d.detail : (d?.detail as any)?.toString?.()))
+            .catch(() => null);
+          throw new Error(detail || `Run failed (HTTP ${res.status})`);
+        }
 
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
@@ -283,6 +281,7 @@ function AgentRunContent() {
                       [parsed.request_id]: { name: parsed.name || "tool", args: parsed.args || {} },
                     }));
                   }
+                  if (parsed.usage) setRunUsage(parsed.usage);
                   if (parsed.type === "token") assistantContent += parsed.content || "";
                   if (parsed.type === "done") {
                     setFinalOutput(parsed.content || assistantContent);
@@ -294,6 +293,7 @@ function AgentRunContent() {
                     const inner = typeof parsed.data === "string" ? JSON.parse(parsed.data) : parsed.data;
                     Object.assign(ev, inner);
                   } catch {}
+                  if (ev.usage) setRunUsage(ev.usage);
                   turnEvents.push(ev);
                   if (parsed.event === "token") assistantContent += String(parsed.data || "");
                   if (parsed.event === "done") {
@@ -321,20 +321,13 @@ function AgentRunContent() {
           setChatHistory((prev) => [...prev, { role: "assistant", content: assistantContent, events: turnEvents }]);
         }
       } else {
-        const res = await fetch(`${API_BASE}/agents/${agentId}/run`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
+        const data = await api<any>(`/agents/${agentId}/run`, { method: "POST", body });
         const out = data.output || "";
         setFinalOutput(out);
         setEvents([{ type: "done", content: out }]);
         setChatHistory((prev) => [...prev, { role: "assistant", content: out }]);
+        if (data.usage) setRunUsage(data.usage);
+        if (data.confidence != null) setFinalConfidence(Number(data.confidence));
         if (data.thread_id) setCurrentThreadId(data.thread_id);
       }
     } catch (err: any) {
@@ -346,19 +339,9 @@ function AgentRunContent() {
     } finally {
       setLoading(false);
       // Refresh runs and threads
-      if (token) {
-        fetch(`${API_BASE}/agents/${agentId}/runs`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then((r) => r.json())
-          .then(setRuns)
-          .catch(() => {});
-        fetch(`${API_BASE}/agents/${agentId}/threads`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then((r) => r.ok ? r.json() : [])
-          .then(setThreads)
-          .catch(() => {});
+      if (getToken()) {
+        api<any[]>(`/agents/${agentId}/runs`).then(setRuns).catch(() => {});
+        api<any[]>(`/agents/${agentId}/threads`).then(setThreads).catch(() => setRuns([]));
       }
     }
   };
@@ -394,171 +377,162 @@ function AgentRunContent() {
 
 
   const resolveApproval = async (requestId: string, approved: boolean) => {
-    const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`${API_BASE}/agents/approval`, {
+      await api("/agents/approval", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ request_id: requestId, approved }),
+        body: { request_id: requestId, approved },
       });
-      if (res.ok) {
-        setPendingApprovals((prev) => {
-          const next = { ...prev };
-          delete next[requestId];
-          return next;
-        });
-      } else {
-        console.error("Approval failed", await res.text());
-      }
+      setPendingApprovals((prev) => {
+        const next = { ...prev };
+        delete next[requestId];
+        return next;
+      });
     } catch (e) {
-      console.error(e);
+      toast.error("Approval failed", { description: (e as Error).message });
     }
   };
 
-  const renderEvent = (ev: StreamEvent, idx: number) => {
-    if (ev.type === "token") {
-      return <span key={idx}>{ev.content}</span>;
-    }
-    if (ev.type === "approval_required" && ev.request_id && pendingApprovals[ev.request_id]) {
-      return (
-        <div key={idx} className="my-3 rounded-md border border-amber-500/50 bg-amber-500/10 p-3">
-          <div className="font-mono text-xs font-medium text-amber-300 mb-2">
-            ⚠ Approval required · {ev.name}
-          </div>
-          <pre className="text-xs mb-3 overflow-auto max-h-24 text-muted-foreground">{JSON.stringify(ev.args, null, 2)}</pre>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => resolveApproval(ev.request_id!, true)}>Approve</Button>
-            <Button size="sm" variant="outline" onClick={() => resolveApproval(ev.request_id!, false)}>Deny</Button>
-          </div>
-        </div>
-      );
-    }
-    if (ev.type === "tool_call") {
-      return (
-        <div key={idx} className="my-2 rounded-md border-l-2 border-blue-400/70 bg-blue-500/10 p-2.5 text-sm">
-          <div className="font-mono text-xs font-medium text-blue-300">⚙ tool_call · {ev.name}</div>
-          <pre className="text-xs mt-1.5 overflow-auto max-h-32 text-muted-foreground">{JSON.stringify(ev.args, null, 2)}</pre>
-        </div>
-      );
-    }
-    if (ev.type === "tool_result") {
-      return (
-        <div key={idx} className="my-2 rounded-md border-l-2 border-emerald-400/70 bg-emerald-500/10 p-2.5 text-sm">
-          <div className="font-mono text-xs font-medium text-emerald-300">✓ tool_result · {ev.name}</div>
-          <pre className="text-xs mt-1.5 overflow-auto max-h-40 whitespace-pre-wrap text-muted-foreground">{ev.content}</pre>
-        </div>
-      );
-    }
-    if (ev.type === "thought") {
-      return (
-        <div key={idx} className="my-2 rounded-md border-l-2 border-amber-400/70 bg-amber-500/5 p-2.5 text-sm italic">
-          <div className="font-mono text-xs font-medium text-amber-300">
-            💭 thought · {ev.agent || "agent"}
-          </div>
-          <div className="mt-1 text-sm whitespace-pre-wrap text-muted-foreground">{ev.content}</div>
-        </div>
-      );
-    }
-    if (ev.type === "agent_step") {
-      return (
-        <div key={idx} className="my-2 rounded-md border-l-2 border-purple-400/70 bg-purple-500/10 p-2.5 text-sm">
-          <div className="font-mono text-xs font-medium text-purple-300">
-            ▸ {ev.agent || "agent"}
-          </div>
-          <div className="mt-1 text-sm whitespace-pre-wrap text-muted-foreground">{ev.content}</div>
-        </div>
-      );
-    }
-    if (ev.type === "error") {
-      return (
-        <div key={idx} className="my-2 rounded-md border-l-2 border-red-500/70 bg-red-500/10 p-2.5 text-sm text-red-300">
-          <span className="font-mono text-xs">error · </span>
-          {ev.content}
-        </div>
-      );
-    }
-    if (ev.type === "reflection") {
-      return (
-        <div key={idx} className="my-2 font-mono text-xs text-muted-foreground">
-          ⟳ self-check round {ev.round}: interrupted — revised answers follow
-        </div>
-      );
-    }
-    if (ev.type === "confidence") {
-      const pct = Math.round((Number(ev.confidence ?? ev.content ?? 0)) * 100);
-      return (
-        <div key={idx} className="my-2 flex items-center gap-2 font-mono text-xs">
-          <span className={pct >= 70 ? "text-emerald-300" : pct >= 40 ? "text-amber-300" : "text-red-300"}>
-            ◎ confidence {pct}%
-          </span>
-          {ev.escalated && <span className="text-muted-foreground">· flagged for review (NEEDS HELP)</span>}
-        </div>
-      );
-    }
-    if (ev.type === "done") {
-      return null; // shown separately
-    }
-    return null;
+  // ---- Plain-language activity rendering ----
+  // Raw stream events (tool_call, agent_step, thought, …) are translated into
+  // short human-readable status lines. Technical JSON stays behind "details".
+  const prettyName = (raw: string) =>
+    raw
+      .replace(/[_-]+/g, " ")
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .trim()
+      .toLowerCase() || "a tool";
+
+  const shorten = (text: string, n = 70) => {
+    const t = String(text || "").replace(/\s+/g, " ").trim();
+    return t.length > n ? t.slice(0, n) + "…" : t;
   };
+
+  const activityLines = (evs: StreamEvent[]): string[] => {
+    const lines: string[] = [];
+    for (const ev of evs) {
+      if (ev.type === "tool_call") lines.push(`🔧 Using ${prettyName(ev.name || "")}…`);
+      else if (ev.type === "tool_result") lines.push(`✓ ${prettyName(ev.name || "")} worked`);
+      else if (ev.type === "agent_step") lines.push(`▸ ${ev.agent || "Step"}: ${shorten(ev.content || "")}`);
+      else if (ev.type === "thought" && ev.content) lines.push(`💭 ${shorten(ev.content, 90)}`);
+      else if (ev.type === "reflection") lines.push(`⟳ Double-checking its answer…`);
+      else if (ev.type === "error") lines.push(`⚠ ${shorten(ev.content || "", 90)}`);
+    }
+    return lines;
+  };
+
+  const toolCount = (evs: StreamEvent[]) => evs.filter((e) => e.type === "tool_call").length;
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
-      <div className="mb-8">
-        <p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
-          agent · {agentId}
-        </p>
-        <h1 className="mt-1 text-3xl font-medium tracking-tight">{agent?.name || "Agent"}</h1>
-        <p className="mt-1 text-muted-foreground">{agent?.description}</p>
-        <div className="flex gap-2 mt-3 flex-wrap">
-          <Badge variant="secondary" className="font-mono">{agent?.model_name}</Badge>
-          {agent?.workflow_config?.type && agent.workflow_config.type !== "single" && (
-            <Badge variant="outline" className="font-mono">{agent.workflow_config.type} multi-agent</Badge>
-          )}
+    <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
+      <div className="mb-6">
+        <nav aria-label="Breadcrumb" className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Link href="/agents" className="transition-colors hover:text-foreground">
+            My agents
+          </Link>
+          <span>/</span>
+          <span className="text-foreground">{agent?.name || `agent ${agentId}`}</span>
+        </nav>
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          <div className="min-w-0">
+            <p className="text-muted-foreground font-mono text-[11px] uppercase tracking-widest">
+              agent console
+            </p>
+            <h1 className="mt-1 text-2xl font-medium tracking-tight">
+              {agent?.name || "Agent"}
+            </h1>
+            <p className="text-muted-foreground mt-1 text-sm">
+              {agent?.description || "Chat with it, or hand it a task to run on its own."}
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button variant="ghost" size="sm" render={<Link href={`/agents/${agentId}/versions`} />}>
+              Versions
+            </Button>
+            <Button variant="ghost" size="sm" render={<Link href={`/agents/${agentId}/evaluations`} />}>
+              Quality checks
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2 mt-4">
-          <Link href={`/agents/${agentId}/versions`} className={buttonVariants({ variant: "outline", size: "sm" })}>
-            Versions
-          </Link>
-          <Link href={`/agents/${agentId}/evaluations`} className={buttonVariants({ variant: "outline", size: "sm" })}>
-            Evaluations
-          </Link>
-          <Link href="/agents" className={buttonVariants({ variant: "outline", size: "sm" })}>
-            All Agents
-          </Link>
-        </div>
+      </div>
+      <div className="text-muted-foreground mb-4 flex flex-wrap items-center gap-2 text-xs">
+        <Badge variant="secondary" className="text-[10px] font-mono">{agent?.model_name}</Badge>
+        {agent?.tools_config && agent.tools_config.length > 0 && (
+          <Badge variant="outline" className="text-[10px] font-mono text-success">
+            {agent.tools_config.length} tool{agent.tools_config.length === 1 ? "" : "s"}
+          </Badge>
+        )}
+        {agent?.workflow_config?.type && agent.workflow_config.type !== "single" && (
+          <Badge variant="outline" className="text-[10px] font-mono">team</Badge>
+        )}
+        {agent?.autonomy_level && (
+          <Badge variant="outline" className="text-[10px] font-mono">{agent.autonomy_level}</Badge>
+        )}
       </div>
 
       <Card className="mb-6">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-          <CardTitle>Conversation</CardTitle>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={startNewThread}>New Chat</Button>
-            {threads.length > 0 && (
-              <select
-                className="rounded-md border border-input bg-transparent px-2 py-1 text-xs font-mono"
-                value=""
-                onChange={(e) => e.target.value && loadThread(e.target.value)}
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-3">
+          <div className="bg-muted inline-flex h-8 items-center rounded-lg p-[3px]">
+            {(
+              [
+                { value: "chat", label: "Chat", hint: "Back-and-forth conversation — the agent remembers the thread" },
+                { value: "automation", label: "Give a task", hint: "Hand off a goal — it works alone and delivers a report" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.value}
+                type="button"
+                title={t.hint}
+                onClick={() => setMode(t.value)}
+                className={`rounded-md px-3 py-1 text-sm font-medium transition-all ${
+                  mode === t.value
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
               >
-                <option value="">Load previous thread…</option>
-                {threads.map((t) => (
-                  <option key={t.thread_id} value={t.thread_id}>
-                    {t.last_input} ({t.run_count})
-                  </option>
-                ))}
-              </select>
-            )}
+                {t.label}
+              </button>
+            ))}
           </div>
+          {mode === "chat" && (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={startNewThread}>New thread</Button>
+              {threads.length > 0 && (
+                <Select
+                  value=""
+                  onValueChange={(v) => v && loadThread(v)}
+                >
+                  <SelectTrigger size="sm" className="w-56" aria-label="Load previous thread">
+                    <SelectValue placeholder="Load previous thread…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {threads.map((t) => (
+                      <SelectItem key={t.thread_id} value={String(t.thread_id)}>
+                        {t.last_input?.slice(0, 40) || t.thread_id.slice(0, 8)} ({t.run_count})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="text-xs font-mono text-muted-foreground">
-            Thread: {currentThreadId.slice(0, 8)}…
-          </div>
-          <div className="max-h-[400px] overflow-auto space-y-3 rounded-lg border border-border bg-muted/30 p-4">
-            {chatHistory.length === 0 && (
-              <p className="text-sm text-muted-foreground italic">Start a conversation. The agent will remember this thread.</p>
+          {mode === "automation" ? (
+            <AgentTasksPanel
+              agentId={agentId}
+              token={token}
+              onOpenThread={(tid) => {
+                setMode("chat");
+                void loadThread(tid);
+              }}
+            />
+          ) : (
+            <>
+          <div className="max-h-[480px] overflow-auto space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+            {chatHistory.length === 0 && !loading && (
+              <p className="py-10 text-center text-sm text-muted-foreground italic">
+                Say hello, ask a question, or give an instruction — everything you say here is remembered.
+              </p>
             )}
             {chatHistory.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -575,15 +549,81 @@ function AgentRunContent() {
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className="rounded-2xl bg-background border border-border px-4 py-2 text-sm text-muted-foreground">
-                  Thinking…
+                <div className="max-w-[80%] rounded-2xl border border-border bg-background px-4 py-3 text-sm">
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <span aria-hidden className="inline-block size-1.5 animate-pulse rounded-full bg-success" />
+                    Working…
+                  </p>
+                  {activityLines(events).filter((l) => !l.startsWith("💭") && !l.startsWith("⟳")).slice(-4).map((line, li) => (
+                    <p key={li} className="mt-1.5 text-xs text-muted-foreground">{line}</p>
+                  ))}
+                  {events.filter((e) => e.type === "token").length > 0 && (
+                    <div className="mt-2 whitespace-pre-wrap">
+                      {events.filter((e) => e.type === "token").map((e) => e.content || "").join("")}
+                    </div>
+                  )}
                 </div>
+              </div>
+            )}
+            {!loading && chatHistory.length > 0 &&
+              chatHistory[chatHistory.length - 1]?.role === "assistant" &&
+              toolCount(chatHistory[chatHistory.length - 1]?.events || []) > 0 && (
+              <div className="flex flex-col items-start gap-1.5">
+                <button
+                  className="rounded-full px-3 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  onClick={() => {
+                    const last = chatHistory.length - 1;
+                    setOpenActivity((prev) => ({ ...prev, [last]: !prev[last] }));
+                  }}
+                >
+                  {openActivity[chatHistory.length - 1] ? "▾" : "▸"} what it did ·{" "}
+                  {toolCount(chatHistory[chatHistory.length - 1].events || [])} tool{" "}
+                  {toolCount(chatHistory[chatHistory.length - 1].events || []) === 1 ? "call" : "calls"}
+                </button>
+                {openActivity[chatHistory.length - 1] && (
+                  <div className="max-w-[80%] space-y-1 rounded-xl border border-dashed border-border bg-background/60 px-3.5 py-2.5 text-xs">
+                    {activityLines(chatHistory[chatHistory.length - 1].events || []).map((line, li) => (
+                      <p key={li} className="text-muted-foreground">{line}</p>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             <div ref={chatEndRef} />
           </div>
+          {runUsage && (
+            <p className="text-right font-mono text-[10px] text-muted-foreground">
+              {runUsage.total_tokens} tokens · ≈ ${runUsage.estimated_cost_usd.toFixed(5)}
+            </p>
+          )}
+          {!loading && finalConfidence != null && (
+            <p className="text-right font-mono text-[10px] text-muted-foreground">
+              answer confidence: {Math.round(finalConfidence * 100)}%
+            </p>
+          )}
+          {Object.entries(pendingApprovals).length > 0 && (
+            <p className="text-sm font-medium">The agent needs your OK before it continues:</p>
+          )}
+          {Object.entries(pendingApprovals).map(([rid, a]) => {
+            const req = a as { name: string; args: Record<string, unknown> };
+            return (
+              <div key={rid} className="rounded-xl border border-warning/40 bg-warning/10 p-3">
+                <p className="flex items-center gap-2 text-sm font-medium text-warning">
+                  <span aria-hidden className="inline-block size-1.5 animate-pulse rounded-full bg-warning" />
+                  Wants to use {prettyName(req.name || "a tool")}
+                </p>
+                <pre className="mt-2 max-h-24 overflow-auto rounded-md bg-background/60 p-2 text-xs text-muted-foreground">
+                  {JSON.stringify(req.args ?? {}, null, 2)}
+                </pre>
+                <div className="mt-2 flex gap-2">
+                  <Button size="sm" onClick={() => resolveApproval(rid, true)}>Allow</Button>
+                  <Button size="sm" variant="outline" onClick={() => resolveApproval(rid, false)}>Deny</Button>
+                </div>
+              </div>
+            );
+          })}
           <Textarea
-            placeholder="Message the agent… (Enter to send, Shift+Enter for newline)"
+            placeholder="Type your message…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -594,175 +634,93 @@ function AgentRunContent() {
             }}
             rows={3}
           />
-          <div className="flex gap-2 items-center">
-            <label className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-              <input type="checkbox" checked={streaming} onChange={(e) => setStreaming(e.target.checked)} />
-              stream
-            </label>
+          <div className="flex items-center gap-3">
             {loading ? (
               <Button variant="destructive" onClick={stopRun}>Stop</Button>
             ) : (
               <Button onClick={runAgent} disabled={!input.trim()}>Send</Button>
             )}
+            <span className="font-mono text-[10px] text-muted-foreground">Enter to send · Shift+Enter for a new line</span>
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
       <Card className="mb-6">
         <CardHeader>
-          <MultiAgentTimeline events={events} className="mb-4" />
-          {runUsage && (
-            <div className="mb-3 flex flex-wrap gap-2 text-xs font-mono">
-              <Badge variant="outline">tokens: {runUsage.total_tokens}</Badge>
-              <Badge variant="outline">in: {runUsage.input_tokens}</Badge>
-              <Badge variant="outline">out: {runUsage.output_tokens}</Badge>
-              <Badge variant="secondary">est. cost: ${runUsage.estimated_cost_usd.toFixed(5)}</Badge>
-            </div>
-          )}
-          {!runUsage && finalOutput && (
-            <div className="mb-3 text-xs font-mono text-muted-foreground">
-              approx tokens: ~{Math.round(finalOutput.length / 4)}
-            </div>
-          )}
-          <CardTitle className="font-mono text-sm text-muted-foreground">live tool calls & events</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div
-            ref={outputRef}
-            className="min-h-[100px] max-h-[280px] overflow-auto rounded-lg border border-border bg-black/40 p-4 font-mono text-sm whitespace-pre-wrap"
-          >
-            {events.length === 0 && (
-              <p className="text-muted-foreground">$ tool calls and intermediate events appear here</p>
-            )}
-            {events.map(renderEvent)}
-            {finalConfidence != null && (
-              <div className="mt-3 text-xs text-muted-foreground">
-                Confidence: {(finalConfidence * 100).toFixed(0)}%
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="font-mono text-sm text-muted-foreground">conversation history</CardTitle>
+          <CardTitle className="text-sm text-muted-foreground">Past conversations</CardTitle>
         </CardHeader>
         <CardContent>
           {runs.length === 0 ? (
-            <p className="font-mono text-sm text-muted-foreground">No previous runs yet.</p>
+            <p className="text-sm text-muted-foreground">No previous conversations yet.</p>
           ) : (
             <div className="space-y-2 max-h-80 overflow-auto">
               {runs.map((run) => (
                 <div
                   key={run.id}
                   className="rounded-lg border border-border p-3 text-sm transition-colors hover:border-foreground/20 hover:bg-muted/50 cursor-pointer"
-                  onClick={() => setSelectedRun(run)}
+                  onClick={() => loadThread(run.thread_id || String(run.id))}
                 >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <span className="font-mono font-medium">#{run.id}</span>
-                      <Badge variant={run.status === "completed" ? "default" : "secondary"} className="ml-2 font-mono">
-                        {run.status}
-                      </Badge>
-                    </div>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {new Date(run.created_at).toLocaleString()}
-                    </span>
+                  <div className="flex justify-between items-start gap-3">
+                    <p className="truncate font-medium">{run.input}</p>
+                    <Badge
+                      variant="outline"
+                      className={`shrink-0 font-mono text-[10px] ${
+                        run.status === "completed"
+                          ? "text-success border-success/30 bg-success/10"
+                          : run.status === "error"
+                            ? "text-destructive border-destructive/30 bg-destructive/10"
+                            : run.status === "running" || run.status === "pending"
+                              ? "text-warning border-warning/30 bg-warning/10"
+                              : "text-muted-foreground"
+                      }`}
+                    >
+                      {run.status === "completed" ? "done" : run.status}
+                    </Badge>
                   </div>
-                  <p className="mt-1 font-mono text-xs text-muted-foreground truncate">in: {run.input}</p>
                   {run.output && (
-                    <p className="mt-1 text-xs line-clamp-2 text-muted-foreground">{run.output.slice(0, 150)}...</p>
+                    <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{run.output.slice(0, 120)}</p>
                   )}
-                  {run.messages && run.messages.length > 0 && (
-                    <p className="mt-1 font-mono text-xs text-blue-300">
-                      {run.messages.filter((m: any) => m.type === "tool_call").length} tool calls recorded
-                    </p>
-                  )}
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {new Date(run.created_at).toLocaleString()}
+                  </p>
                 </div>
               ))}
             </div>
           )}
-          <p className="mt-3 font-mono text-xs text-muted-foreground">
-            click a run to inspect details · use thread id to continue with memory
+          <p className="mt-3 text-xs text-muted-foreground">
+            Click one to open it and continue where you left off.
           </p>
         </CardContent>
       </Card>
 
-      {selectedRun && (
-        <Dialog open={!!selectedRun} onOpenChange={() => setSelectedRun(null)}>
-          <DialogContent className="max-w-3xl max-h-[80vh] overflow-auto">
-            <DialogHeader>
-              <DialogTitle>Run #{selectedRun.id} Details</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 text-sm">
-              <div>
-                <strong className="font-mono text-xs text-muted-foreground uppercase">Input</strong>
-                <pre className="mt-1 rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap">{selectedRun.input}</pre>
-              </div>
-              <div>
-                <strong className="font-mono text-xs text-muted-foreground uppercase">Output</strong>
-                <pre className="mt-1 rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap">{selectedRun.output || "(none)"}</pre>
-              </div>
-              {selectedRun.messages && selectedRun.messages.length > 0 && (
-                <div>
-                  <strong className="font-mono text-xs text-muted-foreground uppercase">Event Stream / Tool Activity</strong>
-                  <div className="mt-2 space-y-1 max-h-60 overflow-auto rounded-md border border-border p-2">
-                    {selectedRun.messages.map((ev: any, i: number) => (
-                      <div key={i} className="border-b border-border pb-1 text-xs font-mono">
-                        <Badge variant="outline" className="mr-1 font-mono">{ev.type}</Badge>
-                        {ev.name && <span className="font-medium">{ev.name}</span>}
-                        {ev.agent && <span> ({ev.agent})</span>}
-                        {ev.content && <span className="ml-1 text-muted-foreground">{String(ev.content).slice(0, 120)}</span>}
-                        {ev.args && <pre className="text-xs">{JSON.stringify(ev.args)}</pre>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <Button
-                size="sm"
-                onClick={() => {
-                  const tid = selectedRun.thread_id || String(selectedRun.id);
-                  loadThread(tid);
-                  setSelectedRun(null);
-                }}
-              >
-                Continue this thread
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
       <Card>
         <CardHeader>
-          <CardTitle className="font-mono text-sm text-muted-foreground">configuration</CardTitle>
+          <CardTitle className="text-sm text-muted-foreground">How this agent is set up</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm space-y-2">
-          <p className="font-mono text-xs">
-            <span className="text-muted-foreground">system_prompt:</span> {agent?.system_prompt?.slice(0, 300)}...
-          </p>
-          <p className="font-mono text-xs">
-            <span className="text-muted-foreground">tools:</span> {(agent?.tools_config || []).length} configured
-          </p>
-          <p className="font-mono text-xs">
-            <span className="text-muted-foreground">memory:</span> {JSON.stringify(agent?.memory_config || {})}
-          </p>
-          <div className="mt-4">
-            <h3 className="text-sm font-medium mb-2">Workflow Structure</h3>
+        <CardContent className="text-sm space-y-3">
+          <details className="rounded-lg border border-border px-4 py-3">
+            <summary className="cursor-pointer text-sm text-muted-foreground transition-colors hover:text-foreground">
+              Technical details
+            </summary>
+            <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+              <p><span className="font-medium">Instructions:</span> {agent?.system_prompt?.slice(0, 300)}{agent?.system_prompt && agent.system_prompt.length > 300 ? "…" : ""}</p>
+              <p><span className="font-medium">Tools:</span> {(agent?.tools_config || []).length} connected</p>
+              <p><span className="font-medium">Memory:</span> {agent?.memory_config?.window_ms ? "remembers recent conversations" : "standard memory"}</p>
+            </div>
+          </details>
+          <div>
+            <h3 className="mb-2 text-sm font-medium">Workflow</h3>
             <WorkflowVisualizer workflow={agent?.workflow_config} agentName={agent?.name} />
           </div>
-          <p className="font-mono text-xs mt-2">
-            <span className="text-muted-foreground">raw workflow:</span> {JSON.stringify(agent?.workflow_config || {})}
-          </p>
 
           <div className="mt-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">Long-term Memories</h3>
+              <h3 className="text-sm font-medium">What it remembers about you</h3>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={consolidateMemories} disabled={loadingMemories}>
-                  Consolidate
+                  Compress old memories
                 </Button>
                 <Button size="sm" variant="outline" onClick={loadMemories} disabled={loadingMemories}>
                   {loadingMemories ? "Loading..." : "Refresh"}
@@ -770,16 +728,22 @@ function AgentRunContent() {
               </div>
             </div>
             {memories.length === 0 ? (
-              <p className="text-xs text-muted-foreground mt-2">No long-term memories stored yet.</p>
+              <p className="text-xs text-muted-foreground mt-2">Nothing yet — the agent saves important things it learns as you talk.</p>
             ) : (
               <div className="mt-2 space-y-2 max-h-48 overflow-auto">
                 {memories.map((m) => (
-                  <div key={m.id} className="text-xs border rounded p-2 flex justify-between gap-2">
+                  <div key={m.id} className="text-xs rounded-lg border border-border bg-card p-2 flex justify-between gap-2">
                     <div className="flex-1">
-                      <div className="font-mono text-muted-foreground">{m.id.slice(0, 8)}...</div>
+                      <div className="font-mono text-muted-foreground">{m.id.slice(0, 8)}</div>
                       <div className="mt-1">{m.text.slice(0, 200)}{m.text.length > 200 ? "..." : ""}</div>
                     </div>
-                    <Button size="sm" variant="ghost" className="h-6 px-2 text-red-500" onClick={() => deleteMemory(m.id)}>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => deleteMemory(m.id)}
+                      aria-label="Delete memory"
+                    >
                       ×
                     </Button>
                   </div>
@@ -790,46 +754,45 @@ function AgentRunContent() {
 
           <div className="mt-6 border-t pt-4">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium">Knowledge Base</h3>
+              <h3 className="text-sm font-medium">Documents it knows</h3>
               <Button size="sm" variant="outline" onClick={loadKnowledge} disabled={loadingKnowledge}>
                 {loadingKnowledge ? "Loading..." : "Refresh"}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground mb-2">
-              Upload documents (text) to give the agent permanent context. Chunks are retrieved semantically during runs when long-term memory is enabled.
+              Paste notes, specs, or docs below — the agent can read them during any task or chat.
             </p>
             <div className="space-y-2 mb-3">
-              <input
+              <Input
                 type="text"
-                placeholder="Source name (e.g. product-docs.md)"
+                placeholder="Document name (e.g. product-docs.md)"
                 value={kbSourceName}
                 onChange={(e) => setKbSourceName(e.target.value)}
-                className="w-full text-xs border rounded px-2 py-1"
               />
               <Textarea
                 placeholder="Paste document text here (markdown, notes, specs...)"
                 value={kbText}
                 onChange={(e) => setKbText(e.target.value)}
-                className="text-xs min-h-[80px]"
+                className="min-h-20 text-xs"
               />
-              <Button size="sm" onClick={addKnowledge} disabled={loadingKnowledge || !kbText.trim()}>
-                {loadingKnowledge ? "Adding..." : "Add to Knowledge Base"}
+              <Button size="sm" variant="outline" onClick={addKnowledge} disabled={loadingKnowledge || !kbText.trim()}>
+                {loadingKnowledge ? "Adding…" : "Save document"}
               </Button>
             </div>
             {knowledgeSources.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No knowledge documents yet.</p>
+              <p className="text-xs text-muted-foreground">No documents yet — paste one above and it’s saved to this agent.</p>
             ) : (
               <div className="space-y-2 max-h-40 overflow-auto">
                 {knowledgeSources.map((src: any) => (
-                  <div key={src.source} className="text-xs border rounded p-2 flex justify-between items-start gap-2">
+                  <div key={src.source} className="text-xs rounded-lg border border-border bg-card p-2 flex justify-between items-start gap-2">
                     <div>
                       <div className="font-medium">{src.source}</div>
                       <div className="text-muted-foreground">{src.chunk_count} chunk(s)</div>
                     </div>
                     <Button
-                      size="sm"
+                      size="xs"
                       variant="ghost"
-                      className="h-6 px-2 text-red-500"
+                      className="text-destructive"
                       onClick={() => deleteKnowledgeSource(src.source)}
                     >
                       Delete
@@ -842,8 +805,46 @@ function AgentRunContent() {
 
         </CardContent>
       </Card>
+
+      {/* shared confirm dialog for destructive actions */}
+      <AlertDialog open={Boolean(confirm)} onOpenChange={(open) => !open && setConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirm?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirm?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                e.preventDefault();
+                void confirm?.onConfirm();
+                setConfirm(null);
+              }}
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
+}
+
+/**
+ * Shared route: /agents/{numeric-id} is a creator/entitled runtime console;
+ * /agents/{slug} is the public marketplace landing page. The dynamic segment
+ * carries either, branched here on numeric shape.
+ */
+function AgentRoute() {
+  const params = useParams();
+  const raw = String(params.id ?? "");
+  if (!/^\d+$/.test(raw)) {
+    // Public marketplace landing (token handled inside the component).
+    return <AgentLanding slug={raw} />;
+  }
+  return <AgentRunContent />;
 }
 
 export default function AgentRunPage() {
@@ -855,7 +856,7 @@ export default function AgentRunPage() {
         </div>
       }
     >
-      <AgentRunContent />
+      <AgentRoute />
     </Suspense>
   );
 }

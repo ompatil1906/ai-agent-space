@@ -33,6 +33,25 @@ class Settings(BaseSettings):
     SANDBOX_KEEP_WORKSPACES: bool = False
     SANDBOX_WORKSPACE_ROOT: str = ""  # empty -> system temp dir
 
+    # --- Real-money marketplace payments (Razorpay) ---
+    # PAYMENT_PROVIDER: "razorpay" (default) | "none" (payments disabled)
+    PAYMENT_PROVIDER: str = "razorpay"
+    # razorpay mode: "test" (sandbox) | "live" (production). Never fake data: keys decide.
+    RAZORPAY_MODE: str = "test"
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    # Webhook signing secret from the Razorpay dashboard (required for webhooks).
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+    # RazorpayX (payouts to creators). Payouts stay "requested" until configured.
+    RAZORPAYX_KEY_ID: str = ""
+    RAZORPAYX_KEY_SECRET: str = ""
+    RAZORPAYX_ACCOUNT_NUMBER: str = ""
+    # Platform marketplace settings
+    PLATFORM_CURRENCY: str = "INR"          # default currency for new pricing plans
+    PLATFORM_COMMISSION_BPS: int = 1000     # platform fee, basis points (1000 = 10%)
+    PLATFORM_MIN_PAYOUT_MINOR: int = 50000  # minimum payout amount (minor units, 50000 = ₹500)
+    MARKETPLACE_MODERATION: str = "off"     # "off" = publish immediately, "manual" = pending_review queue
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -1,264 +1,446 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { API_BASE } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { BotIcon, CpuIcon, GlobeIcon, LayersIcon, StoreIcon, Undo2Icon, GitBranchIcon } from "lucide-react";
+import { api, getToken, AUTH_EVENT } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader, EmptyState } from "@/components/ui-page";
+import { AgentMonogram } from "@/components/marketplace/agent-card";
 import AgentBuilder from "@/components/AgentBuilder";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Agent {
   id: number;
   name: string;
   description: string | null;
+  slug?: string | null;
+  avatar_url?: string | null;
   system_prompt: string;
   model_name: string;
   temperature: number;
   is_public: boolean;
   is_published?: boolean;
+  status?: string;
   price?: number;
-  tools_config?: any[];
+  tools_config?: Array<Record<string, unknown>>;
+  workflow_config?: Record<string, unknown>;
+}
+
+interface AgentVersion {
+  id: number;
+  version_number: number;
+  name: string;
+  change_note?: string | null;
+  system_prompt: string;
+  created_at: string;
 }
 
 export default function AgentsPage() {
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const router = useRouter();
+  const [agents, setAgents] = useState<Agent[] | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [authed, setAuthed] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
-  const [versions, setVersions] = useState<any[]>([]);
+  const [versions, setVersions] = useState<AgentVersion[]>([]);
   const [versionsOpen, setVersionsOpen] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
-  const [discoverResult, setDiscoverResult] = useState<string>("");
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [publishTarget, setPublishTarget] = useState<Agent | null>(null);
+  const [publishAction, setPublishAction] = useState<"publish" | "unpublish">("publish");
+  const [working, setWorking] = useState(false);
 
   useEffect(() => {
-    const t = localStorage.getItem("token");
-    if (!t) {
-      window.location.href = "/login";
-      return;
-    }
-    setToken(t);
-    fetchAgents(t);
+    const sync = async () => {
+      const t = await Promise.resolve(getToken());
+      setToken(t);
+      setAuthed(Boolean(t));
+    };
+    void sync();
+    window.addEventListener(AUTH_EVENT, sync);
+    return () => window.removeEventListener(AUTH_EVENT, sync);
   }, []);
 
-  const fetchAgents = async (t: string) => {
-    const res = await fetch(`${API_BASE}/agents/`, {
-      headers: { Authorization: `Bearer ${t}` },
-    });
-    if (res.ok) {
-      setAgents(await res.json());
+  const fetchAgents = useCallback(async () => {
+    if (!getToken()) return;
+    try {
+      const data = await api<Agent[]>("/agents/");
+      setAgents(data);
+    } catch (e) {
+      toast.error("Could not load agents", { description: (e as Error).message });
+      setAgents([]);
     }
-  };
-  const publishAgent = async (id: number, publish: boolean) => {
-    if (!token) return;
-    const endpoint = publish ? "publish" : "unpublish";
-    const res = await fetch(`${API_BASE}/marketplace/agents/${id}/${endpoint}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      fetchAgents(token);
-    } else {
-      const err = await res.json();
-      alert(err.detail || "Failed");
+  }, []);
+
+  useEffect(() => {
+    if (!authed || !token) {
+      if (token === null && !authed && getToken() === null) {
+        return; // wait for auth check to settle
+      }
+    }
+    if (authed && token) void fetchAgents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed, token]);
+
+  // Redirect once we know this visitor is signed out.
+  useEffect(() => {
+    if (!authed) return;
+    if (!getToken()) router.replace("/login");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
+
+  const setPublishing = async (publish: boolean) => {
+    if (!publishTarget) return;
+    setWorking(true);
+    try {
+      const endpoint = publish ? "publish" : "unpublish";
+      await api(`/marketplace/agents/${publishTarget.id}/${endpoint}`, { method: "POST" });
+      toast.success(
+        publish
+          ? `${publishTarget.name} submitted for review`
+          : `${publishTarget.name} removed from the marketplace`
+      );
+      setPublishTarget(null);
+      await fetchAgents();
+    } catch (e) {
+      toast.error(publish ? "Publish failed" : "Unpublish failed", {
+        description: (e as Error).message,
+      });
+    } finally {
+      setWorking(false);
     }
   };
 
   const cloneAgent = async (id: number) => {
-    if (!token) return;
-    const res = await fetch(`${API_BASE}/marketplace/agents/${id}/clone`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      fetchAgents(token);
-      alert("Cloned to your agents!");
+    try {
+      await api(`/marketplace/agents/${id}/clone`, { method: "POST" });
+      toast.success("Duplicated — the copy is in your workspace");
+      await fetchAgents();
+    } catch (e) {
+      toast.error("Duplicate failed", { description: (e as Error).message });
     }
   };
 
-
-  const createAgent = async (payload: any) => {
+  const createAgent = async (payload: Agent) => {
     if (!token) return;
-    const res = await fetch(`${API_BASE}/agents/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) {
+    setWorking(true);
+    try {
+      await api("/agents/", { method: "POST", body: payload });
+      toast.success("Agent created", { description: "It starts as a free draft — configure pricing when you publish." });
       setShowCreate(false);
-      fetchAgents(token);
-      setDiscoverResult("");
-    } else {
-      const err = await res.json().catch(() => ({}));
-      alert(err.detail || "Failed to create agent");
+      await fetchAgents();
+    } catch (e) {
+      toast.error("Failed to create agent", { description: (e as Error).message });
+    } finally {
+      setWorking(false);
     }
   };
 
-  const updateAgent = async (payload: any) => {
+  const updateAgent = async (payload: Agent) => {
     if (!token || !editingAgent) return;
-    const res = await fetch(`${API_BASE}/agents/${editingAgent.id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) {
+    setWorking(true);
+    try {
+      await api(`/agents/${editingAgent.id}`, { method: "PUT", body: payload });
+      toast.success("Agent updated", { description: "A version snapshot was created automatically." });
       setEditingAgent(null);
-      fetchAgents(token);
-    } else {
-      const err = await res.json().catch(() => ({}));
-      alert(err.detail || "Failed to update agent");
+      await fetchAgents();
+    } catch (e) {
+      toast.error("Failed to update agent", { description: (e as Error).message });
+    } finally {
+      setWorking(false);
     }
   };
 
-  const loadVersions = async (agentId: number) => {
-    if (!token) return;
-    const res = await fetch(`${API_BASE}/agents/${agentId}/versions`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      setVersions(await res.json());
-      setSelectedAgentId(agentId);
+  const loadVersions = async (agent: Agent) => {
+    try {
+      const data = await api<AgentVersion[]>(`/agents/${agent.id}/versions`);
+      setVersions(data);
+      setSelectedAgent(agent);
       setVersionsOpen(true);
+    } catch (e) {
+      toast.error("Could not load versions", { description: (e as Error).message });
     }
   };
 
   const restoreVersion = async (agentId: number, versionId: number) => {
-    if (!token) return;
-    const res = await fetch(`${API_BASE}/agents/${agentId}/versions/${versionId}/restore`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      alert("Restored successfully");
+    try {
+      await api(`/agents/${agentId}/versions/${versionId}/restore`, { method: "POST" });
+      toast.success("Restored", { description: "A new version was created from the snapshot." });
       setVersionsOpen(false);
-      fetchAgents(token);
-    } else {
-      alert("Restore failed");
+      await fetchAgents();
+    } catch (e) {
+      toast.error("Restore failed", { description: (e as Error).message });
     }
   };
 
-  if (!token) return <div>Loading...</div>;
-
-  return (
-    <div className="container mx-auto p-6 max-w-6xl">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <p className="font-mono text-xs tracking-wide text-muted-foreground uppercase">
-            workspace
-          </p>
-          <h1 className="mt-1 text-3xl font-medium tracking-tight">My Agents</h1>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => (window.location.href = "/marketplace")}>
-            Marketplace
-          </Button>
-          <Button onClick={() => { setShowCreate(!showCreate); setEditingAgent(null); }}>
-            {showCreate ? "Cancel" : "Create Agent"}
-          </Button>
+  if (!authed) {
+    return (
+      <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+        <Skeleton className="h-9 w-48" />
+        <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-44 rounded-xl" />
+          ))}
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+      <PageHeader
+        eyebrow="workspace"
+        title="My Agents"
+        description="Your digital workers. Open one to chat with it — or hand it a task to run on its own."
+      >
+        <Button variant="outline" render={<Link href="/marketplace" />}>
+          <StoreIcon className="size-4" /> Marketplace
+        </Button>
+        <Button
+          onClick={() => {
+            setShowCreate((v) => !v);
+            setEditingAgent(null);
+          }}
+        >
+          {showCreate ? "Cancel" : "New agent"}
+        </Button>
+      </PageHeader>
 
       {showCreate && (
-        <div className="mb-6">
+        <div className="mb-8">
           <AgentBuilder onSubmit={createAgent} />
-          {discoverResult && (
-            <pre className="mt-2 p-2 bg-muted text-xs overflow-auto max-h-40">{discoverResult}</pre>
-          )}
         </div>
       )}
 
       {editingAgent && (
-        <div className="mb-6">
-          <h2 className="text-lg font-medium tracking-tight mb-2">
-            <span className="font-mono text-xs text-muted-foreground uppercase">editing · </span>
-            {editingAgent.name}
-          </h2>
-          <AgentBuilder
-            onSubmit={updateAgent}
-            initial={editingAgent}
-          />
-          <Button variant="outline" className="mt-2" onClick={() => setEditingAgent(null)}>
-            Cancel Edit
-          </Button>
+        <div className="mb-8">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-lg font-medium tracking-tight">
+              <span className="text-muted-foreground font-mono text-xs uppercase">editing · </span>
+              {editingAgent.name}
+            </h2>
+            <Button size="sm" variant="ghost" onClick={() => setEditingAgent(null)}>
+              Cancel edit
+            </Button>
+          </div>
+          <AgentBuilder onSubmit={updateAgent} initial={editingAgent} />
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {agents.map((agent) => (
-          <Card key={agent.id}>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium tracking-tight">{agent.name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-3">{agent.description || "No description"}</p>
-              <div className="rounded-md border border-border bg-muted/40 p-2.5 font-mono text-xs text-muted-foreground space-y-0.5">
-                <p>model: {agent.model_name}</p>
-                <p>temp: {agent.temperature}</p>
-                {agent.tools_config && agent.tools_config.length > 0 && (
-                  <p className="text-emerald-300">mcp: {agent.tools_config.length} server(s)</p>
+      {agents === null ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+              <div className="flex items-center gap-3">
+                <Skeleton className="size-9 rounded-lg" />
+                <Skeleton className="h-3.5 w-1/2" />
+              </div>
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-2/3" />
+              <Skeleton className="h-7 w-40" />
+            </div>
+          ))}
+        </div>
+      ) : agents.length > 0 ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {agents.map((agent) => (
+            <Card key={agent.id} className="transition-all hover:-translate-y-0.5 hover:ring-foreground/20">
+              <CardHeader>
+                <div className="flex items-start gap-3">
+                  <AgentMonogram agent={{ id: agent.id, name: agent.name, avatar_url: agent.avatar_url }} />
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="truncate text-sm font-medium tracking-tight">
+                      {agent.name}
+                    </CardTitle>
+                    {agent.is_published && (
+                      <p className="text-muted-foreground mt-0.5 flex items-center gap-1 text-[11px]">
+                        <GlobeIcon className="size-3" /> listed on the marketplace
+                      </p>
+                    )}
+                  </div>
+                  <CardAction>
+                    <Badge variant="secondary" className="font-mono text-[10px]">
+                      <CpuIcon className="size-3" />
+                      {agent.model_name}
+                    </Badge>
+                  </CardAction>
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-1 flex-col">
+                <p className="text-muted-foreground line-clamp-2 mb-3 text-sm">
+                  {agent.description || "No description"}
+                </p>
+                <div className="text-muted-foreground mb-4 flex flex-wrap items-center gap-1.5">
+                  {agent.tools_config && agent.tools_config.length > 0 && (
+                    <Badge variant="outline" className="text-[10px] font-mono">
+                      {agent.tools_config.length} tool{agent.tools_config.length === 1 ? "" : "s"}
+                    </Badge>
+                  )}
+                  {String(agent.workflow_config?.["type"] ?? "single") !== "single" && (
+                    <Badge variant="outline" className="text-[10px] font-mono">
+                      <LayersIcon className="size-3" /> team
+                    </Badge>
+                  )}
+                </div>
+                <div className="mt-auto flex flex-wrap gap-2">
+                  <Button size="sm" render={<Link href={`/agents/${agent.id}`} />}>
+                    Open
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditingAgent(agent)}>
+                    Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setPublishAction(agent.is_published ? "unpublish" : "publish");
+                      setPublishTarget(agent);
+                    }}
+                  >
+                    {agent.is_published ? "Unpublish" : "Publish…"}
+                  </Button>
+                </div>
+                <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-3 font-mono text-[11px]">
+                  <Link
+                    href={`/agents/${agent.id}/evaluations`}
+                    className="flex items-center gap-1 transition-colors hover:text-foreground"
+                  >
+                    quality checks
+                  </Link>
+                  <button
+                    className="flex items-center gap-1 transition-colors hover:text-foreground"
+                    onClick={() => loadVersions(agent)}
+                  >
+                    <GitBranchIcon className="size-3" /> versions
+                  </button>
+                  <button
+                    className="flex items-center gap-1 transition-colors hover:text-foreground"
+                    onClick={() => cloneAgent(agent.id)}
+                  >
+                    <Undo2Icon className="size-3" /> duplicate
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : agents.length === 0 && !showCreate && !editingAgent ? (
+        <EmptyState
+          icon={<BotIcon className="size-5" />}
+          title="No agents yet"
+          hint="Create your first agent from a template, or grab a ready-made one from the marketplace."
+          actionLabel="New agent"
+          onAction={() => setShowCreate(true)}
+        />
+      ) : null}
+
+      {/* versions dialog */}
+      <Dialog open={versionsOpen} onOpenChange={setVersionsOpen}>
+        <DialogContent className="max-h-[80vh] max-w-2xl overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Versions · {selectedAgent?.name ?? ""}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            {versions.map((v, i) => (
+              <div
+                key={v.id}
+                className="ring-foreground/10 flex items-start justify-between gap-3 rounded-lg bg-card px-3 py-2.5 ring-1"
+              >
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    <span
+                      className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] ring-1 ${
+                        i === 0
+                          ? "bg-brand/10 text-brand ring-brand/20"
+                          : "bg-muted text-muted-foreground ring-border"
+                      }`}
+                    >
+                      v{v.version_number}
+                    </span>
+                    {v.name}
+                  </p>
+                  <p className="text-muted-foreground mt-0.5 text-xs">
+                    {v.change_note || "no note"} ·{" "}
+                    {new Date(v.created_at).toLocaleString("en-IN", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </p>
+                  <p className="text-muted-foreground/70 mt-1 line-clamp-2 font-mono text-[11px]">
+                    {v.system_prompt.slice(0, 140)}
+                  </p>
+                </div>
+                {i !== 0 && (
+                  <Button size="sm" variant="outline" onClick={() => selectedAgent && restoreVersion(selectedAgent.id, v.id)}>
+                    Restore
+                  </Button>
                 )}
               </div>
-              <div className="mt-4 flex gap-2 flex-wrap">
-                <Link href={`/agents/${agent.id}`} className={buttonVariants({ size: "sm", variant: "outline" })}>
-                  View / Run
-                </Link>
-                <Link href={`/agents/${agent.id}/evaluations`} className={buttonVariants({ size: "sm", variant: "outline" })}>
-                  Evaluations
-                </Link>
-                <Button size="sm" variant="outline" onClick={() => setEditingAgent(agent)}>
-                  Edit
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => loadVersions(agent.id)}>
-                  Versions
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => publishAgent(agent.id, !agent.is_published)}>
-                  {agent.is_published ? "Unpublish" : "Publish"}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => cloneAgent(agent.id)}>
-                  Clone
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      {agents.length === 0 && !showCreate && !editingAgent && (
-        <div className="rounded-xl border border-dashed border-border p-12 text-center">
-          <p className="font-mono text-sm text-muted-foreground">
-            No agents yet — create one to get started.
-          </p>
-        </div>
-      )}
-
-      <Dialog open={versionsOpen} onOpenChange={setVersionsOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
-          <DialogHeader>
-            <DialogTitle>Agent Versions</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            {versions.map((v) => (
-              <div key={v.id} className="border rounded p-3 flex justify-between items-start">
-                <div>
-                  <p className="font-medium">v{v.version_number} — {v.name}</p>
-                  <p className="text-xs text-muted-foreground">{v.change_note} · {new Date(v.created_at).toLocaleString()}</p>
-                  <p className="text-xs mt-1 line-clamp-2">{v.system_prompt.slice(0, 120)}...</p>
-                </div>
-                <Button size="sm" onClick={() => selectedAgentId && restoreVersion(selectedAgentId, v.id)}>
-                  Restore
-                </Button>
-              </div>
             ))}
-            {versions.length === 0 && <p>No versions yet.</p>}
+            {versions.length === 0 && (
+              <p className="text-muted-foreground py-4 text-center text-sm">
+                No versions yet — every edit creates a snapshot automatically.
+              </p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* publish/unpublish confirm */}
+      <AlertDialog
+        open={Boolean(publishTarget)}
+        onOpenChange={(open) => !open && setPublishTarget(null)}
+      >
+        <AlertDialogContent size="default">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {publishAction === "publish"
+                ? `Publish “${publishTarget?.name}”?`
+                : `Unpublish “${publishTarget?.name}”?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {publishAction === "publish"
+                ? "The listing goes into review. Once approved it becomes publicly discoverable — buyers then run it under your configured plan."
+                : "The listing stops being discoverable immediately. Buyers who already own it keep their access."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant={publishAction === "unpublish" ? "destructive" : "default"}
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                e.preventDefault();
+                void setPublishing(publishAction === "publish");
+              }}
+              disabled={working}
+            >
+              {working ? "Working…" : publishAction === "publish" ? "Submit for review" : "Unpublish"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* (versions/publish dialogs above) */}
     </div>
   );
 }

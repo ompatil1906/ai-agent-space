@@ -1,9 +1,10 @@
 from typing import Any, List, Optional
+import asyncio
 import uuid
 import time
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
@@ -12,12 +13,38 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_active_user, get_current_user_flexible
 from app.models import Agent, AgentRun, User, AgentEvaluation, CreditTransaction, ToolApproval
-from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse, BatchEvaluateRequest, BatchEvaluateResponse, AgentEvaluationPublic, EvaluationSummary
+from app.schemas import (
+    AgentRunPublic,
+    RunRequest,
+    RunResponse,
+    EvaluateRequest,
+    EvaluateResponse,
+    BatchEvaluateRequest,
+    BatchEvaluateResponse,
+    AgentEvaluationPublic,
+    EvaluationSummary,
+    AgentTaskCreate,
+)
 from app.schemas import AgentRunPublic, RunRequest, RunResponse, EvaluateRequest, EvaluateResponse, BatchEvaluateRequest, BatchEvaluateResponse, AgentEvaluationPublic, EvaluationSummary
 from app.services.sandbox_service import sandbox_service
 from app.services.mcp_service import mcp_service
+from app.services import execution_auth
+from app.services.execution_auth import (
+    RunDenied,
+    RunIdempotentReplay,
+    authorize_run,
+    bill_run,
+    refund_run,
+)
 
 router = APIRouter()
+
+
+def _run_denied_http(exc: RunDenied) -> HTTPException:
+    headers = None
+    if exc.status_code == 402:
+        headers = {"X-Purchase-Required": "true"}
+    return HTTPException(status_code=exc.status_code, detail=exc.detail, headers=headers)
 
 
 def _build_agent_config(agent: Agent, user: User, db: Optional[Session] = None) -> dict:
@@ -108,9 +135,20 @@ async def run_agent_endpoint(
     if agent.owner_id != current_user.id and not agent.is_public:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    # Credit check (simple usage metering)
-    if current_user.credits < 1:
-        raise HTTPException(status_code=402, detail="Insufficient credits to run agent")
+    # Money: marketplace authorization + pay-per-execution billing (replaces credits)
+    try:
+        entitlement = authorize_run(db, agent, current_user, request.client_request_id)
+    except RunDenied as e:
+        raise _run_denied_http(e)
+    except RunIdempotentReplay as replay:
+        existing = replay.run
+        return RunResponse(
+            output=existing.output or "",
+            agent_id=existing.agent_id,
+            run_id=existing.id,
+            thread_id=existing.thread_id,
+            latency_ms=existing.latency_ms,
+        )
 
     agent_config = _build_agent_config(agent, current_user, db)
     agent_config = _resolve_nested_agents(agent_config, db, current_user)
@@ -136,17 +174,11 @@ async def run_agent_endpoint(
         input=request.input,
         status="running",
         thread_id=thread_id,
+        client_request_id=request.client_request_id,
     )
     db.add(run)
-    # Deduct 1 credit for the run
-    current_user.credits -= 1
-    db.add(CreditTransaction(
-        user_id=current_user.id,
-        amount=-1,
-        balance_after=current_user.credits,
-        reason="run_meter",
-        agent_id=agent.id,
-    ))
+    db.commit()
+    bill_run(db, run, agent, entitlement)
     db.commit()
     db.refresh(run)
 
@@ -179,6 +211,7 @@ async def run_agent_endpoint(
         run.error = str(e)
         run.latency_ms = now_ms() - started_ms
         db.commit()
+        refund_run(db, run)  # failed executions are never billed
         raise HTTPException(status_code=500, detail=f"Agent execution failed: {str(e)}")
     finally:
         if workspace:
@@ -198,8 +231,11 @@ async def stream_agent_endpoint(
     if agent.owner_id != current_user.id and not agent.is_public:
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    if current_user.credits < 1:
-        raise HTTPException(status_code=402, detail="Insufficient credits to run agent")
+    # Money: marketplace authorization + pay-per-execution billing (replaces credits)
+    try:
+        entitlement = authorize_run(db, agent, current_user, request.client_request_id)
+    except RunDenied as e:
+        raise _run_denied_http(e)
 
     agent_config = _build_agent_config(agent, current_user, db)
     agent_config = _resolve_nested_agents(agent_config, db, current_user)
@@ -221,16 +257,11 @@ async def stream_agent_endpoint(
         input=request.input,
         status="running",
         thread_id=request.thread_id or str(uuid.uuid4()),
+        client_request_id=request.client_request_id,
     )
     db.add(run)
-    current_user.credits -= 1
-    db.add(CreditTransaction(
-        user_id=current_user.id,
-        amount=-1,
-        balance_after=current_user.credits,
-        reason="run_meter",
-        agent_id=agent.id,
-    ))
+    db.commit()
+    bill_run(db, run, agent, entitlement)
     db.commit()
     db.refresh(run)
 
@@ -313,6 +344,7 @@ async def stream_agent_endpoint(
                     run.messages = collected_events
                     run.latency_ms = now_ms() - started_ms
                     db.commit()
+                    refund_run(db, run)  # failed executions are never billed
                     yield {"event": "error", "data": event["content"]}
         except Exception as e:
             run.status = "error"
@@ -320,6 +352,7 @@ async def stream_agent_endpoint(
             run.messages = collected_events
             run.latency_ms = now_ms() - started_ms
             db.commit()
+            refund_run(db, run)  # failed executions are never billed
             yield {"event": "error", "data": str(e)}
         finally:
             if workspace:
@@ -504,6 +537,200 @@ async def list_agent_threads(
         }
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# Devin-style DIRECT AUTOMATION: unattended background task runs
+# ---------------------------------------------------------------------------
+
+_AUTOMATION_DIRECTIVE = (
+    "\n\nOPERATING MODE: DIRECT AUTOMATION (unattended task)."
+    " Work fully autonomously — there is no user available to answer questions mid-run."
+    " Never ask for confirmation; make reasonable decisions guided by the task."
+    " Use available tools to gather facts and verify your results."
+    " If a step is blocked, record the blocker and continue with the best alternative path."
+    " Finish with a final DELIVERABLE report with exactly these sections:"
+    " Outcome (done / partial / failed); What was done; Results & artifacts (key data inline);"
+    " Verification performed; Caveats & next steps. Do not end with a question."
+)
+
+# Keep references so created tasks are not garbage-collected mid-run
+_BACKGROUND_TASKS: set = set()
+
+
+async def _execute_automation_task(run_id: int, agent_id: int, user_id: int) -> None:
+    """Background executor for a direct-automation run. Uses its own DB session."""
+    from app.core.database import SessionLocal
+
+    db = SessionLocal()
+    workspace = None
+    started_ms = now_ms()
+    try:
+        run = db.query(AgentRun).filter(AgentRun.id == run_id).first()
+        agent = db.query(Agent).filter(Agent.id == agent_id).first()
+        user = db.query(User).filter(User.id == user_id).first()
+        if run is None or agent is None or user is None:
+            return
+        if run.status == "cancelled":
+            return
+
+        agent_config = _build_agent_config(agent, user, db)
+        agent_config = _resolve_nested_agents(agent_config, db, user)
+        try:
+            agent_config["tools_config"] = await mcp_service.resolve_tools_config(
+                agent_config.get("tools_config") or [], db, user.id
+            )
+        except Exception:
+            pass
+        # Autonomous operation: autonomy directive + generous step budget
+        agent_config["system_prompt"] = (agent_config.get("system_prompt") or "") + _AUTOMATION_DIRECTIVE
+        agent_config["max_steps"] = max(int(agent_config.get("max_steps") or 25) or 25, 50)
+        # Run without approval gates: unattended by definition
+        if "autonomy_level" in agent_config:
+            agent_config["autonomy_level"] = "autonomous"
+        if agent_config.get("sandbox_enabled"):
+            workspace = sandbox_service.create_workspace(f"task-{run_id}")
+            agent_config["workspace"] = workspace
+
+        result = await run_agent(agent_config, run.input, thread_id=run.thread_id)
+        usage = result.get("usage") or {}
+
+        db.refresh(run)  # pick up a cancel that may have happened mid-run
+        run.output = result["output"]
+        run.latency_ms = now_ms() - started_ms
+        run.input_tokens = usage.get("input_tokens", 0)
+        run.output_tokens = usage.get("output_tokens", 0)
+        run.total_tokens = usage.get("total_tokens", 0)
+        run.estimated_cost_usd = usage.get("estimated_cost_usd", 0.0)
+        if run.status != "cancelled":
+            run.status = "completed"
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        run = db.query(AgentRun).filter(AgentRun.id == run_id).first()
+        if run is not None:
+            if run.status != "cancelled":
+                run.status = "error"
+                run.error = str(e)[:2000]
+            run.latency_ms = now_ms() - started_ms
+            db.commit()
+            refund_run(db, run)  # failed executions are never billed
+    finally:
+        if workspace:
+            sandbox_service.cleanup_workspace(workspace)
+        db.close()
+
+
+def _spawn_automation_task(run: AgentRun, agent: Agent, user: User) -> None:
+    task = asyncio.create_task(_execute_automation_task(run.id, agent.id, user.id))
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
+@router.post("/{agent_id}/tasks", response_model=AgentRunPublic, status_code=status.HTTP_202_ACCEPTED)
+async def create_agent_task(
+    agent_id: int,
+    request: AgentTaskCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_flexible),
+) -> Any:
+    """Create a DIRECT AUTOMATION task: the agent runs it unattended in the background."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.owner_id != current_user.id and not agent.is_public:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    # Money: marketplace authorization + pay-per-execution billing (replaces credits)
+    try:
+        entitlement = authorize_run(db, agent, current_user, request.client_request_id)
+    except RunDenied as e:
+        raise _run_denied_http(e)
+    except RunIdempotentReplay as replay:
+        existing = replay.run
+        return AgentRunPublic.model_validate(existing)
+
+    run = AgentRun(
+        agent_id=agent_id,
+        user_id=current_user.id,
+        input=request.input,
+        title=request.title.strip()[:200] or "Automation task",
+        status="running",
+        mode="automation",
+        thread_id=str(uuid.uuid4()),  # isolated session: try it in chat later
+        client_request_id=request.client_request_id,
+    )
+    db.add(run)
+    db.commit()
+    bill_run(db, run, agent, entitlement)
+    db.commit()
+    db.refresh(run)
+    _spawn_automation_task(run, agent, current_user)
+    return run
+
+
+@router.get("/{agent_id}/tasks", response_model=List[AgentRunPublic])
+async def list_agent_tasks(
+    agent_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_flexible),
+    limit: int = 50,
+) -> Any:
+    """List this agent's DIRECT AUTOMATION tasks (mode=automation), newest first."""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent or (agent.owner_id != current_user.id and not agent.is_public):
+        raise HTTPException(status_code=404, detail="Agent not found or access denied")
+    return (
+        db.query(AgentRun)
+        .filter(AgentRun.agent_id == agent_id, AgentRun.user_id == current_user.id,
+                AgentRun.mode == "automation")
+        .order_by(AgentRun.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+@router.get("/{agent_id}/tasks/{run_id}", response_model=AgentRunPublic)
+async def get_agent_task(
+    agent_id: int,
+    run_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_flexible),
+) -> Any:
+    run = (
+        db.query(AgentRun)
+        .filter(AgentRun.id == run_id, AgentRun.agent_id == agent_id,
+                AgentRun.user_id == current_user.id, AgentRun.mode == "automation")
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return run
+
+
+@router.post("/{agent_id}/tasks/{run_id}/cancel", response_model=AgentRunPublic)
+async def cancel_agent_task(
+    agent_id: int,
+    run_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_flexible),
+) -> Any:
+    """Cooperative cancel: marks the task cancelled; the executor preserves that status."""
+    from fastapi import status as http_status
+
+    run = (
+        db.query(AgentRun)
+        .filter(AgentRun.id == run_id, AgentRun.agent_id == agent_id,
+                AgentRun.user_id == current_user.id, AgentRun.mode == "automation")
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if run.status in ("pending", "running"):
+        run.status = "cancelled"
+        db.commit()
+    db.refresh(run)
+    return run
 
 
 @router.get("/runs/all", response_model=List[AgentRunPublic])

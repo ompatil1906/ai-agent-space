@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { McpLogo } from "@/components/McpLogo";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import ListingPanel from "@/components/marketplace/listing-panel";
 import { API_BASE } from "@/lib/api";
 
 interface ToolConfig {
@@ -783,7 +784,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                       )}
                     </div>
                     {agentToolIds.length > 0 && (
-                      <p className="text-xs mt-1 text-emerald-600">{agentToolIds.length} agent(s) bound as tools</p>
+                      <p className="text-xs mt-1 text-success">{agentToolIds.length} agent(s) bound as tools</p>
                     )}
                   </div>
                   <label className="flex items-center gap-2 text-sm">
@@ -1053,13 +1054,13 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                   <div className="mt-3 rounded-lg border border-border p-3 text-sm">
                     <strong className="font-mono text-xs text-muted-foreground uppercase">Validation</strong>{" "}
                     {validationResult.error ? (
-                      <span className="text-red-400">{validationResult.error}</span>
+                      <span className="text-destructive">{validationResult.error}</span>
                     ) : validationResult.all_valid ? (
-                      <span className="text-emerald-400">All configs valid</span>
+                      <span className="text-success">All configs valid</span>
                     ) : (
                       <ul className="list-disc pl-5 mt-1">
                         {validationResult.results?.map((r: any, i: number) => (
-                          <li key={i} className={r.valid ? "text-emerald-400" : "text-red-400"}>
+                          <li key={i} className={r.valid ? "text-success" : "text-destructive"}>
                             {r.name}: {r.valid ? "OK" : r.error}
                           </li>
                         ))}
@@ -1179,6 +1180,12 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 })}
               </div>
 
+              {/* Marketplace listing & pricing (existing agents only — the
+                  agent must exist before it can be listed or priced) */}
+              {initial?.id && (
+                <ListingPanel agentId={initial.id} />
+              )}
+
               <Button type="submit" disabled={loading}>
                 {loading ? "Saving..." : "Save Agent"}
               </Button>
@@ -1197,7 +1204,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 className="font-mono text-xs"
                 spellCheck={false}
               />
-              {yamlError && <p className="font-mono text-xs text-red-400">{yamlError}</p>}
+              {yamlError && <p className="font-mono text-xs text-destructive">{yamlError}</p>}
               <div className="flex gap-2">
                 <Button
                   type="button"

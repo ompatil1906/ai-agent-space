@@ -1,9 +1,15 @@
-"""Marketplace integration tests: credit ledger on purchase + leaderboard ranking."""
+"""Marketplace integration tests — REAL-MONEY model.
+
+Replaces the legacy credit-ledger tests. The credit columns still exist in the
+DB but are never written by marketplace flows; payments go through Razorpay
+(or a manual refund path in admin tests), entitlements gate execution, and the
+creator earnings ledger holds the money truth.
+"""
+from typing import Optional
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-
-from app.models.user import CreditTransaction
 
 
 def _register(client: TestClient, email: str) -> dict:
@@ -20,85 +26,238 @@ def _register(client: TestClient, email: str) -> dict:
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
 
 
-_AGENT_NAMES = iter(("Premier Coding Agent Alpha", "Premier Coding Agent Beta"))
-
-
-def _make_priced_agent(client: TestClient) -> int:
-    """Create a priced, published agent under the shared seller account."""
-    seller_headers = _register(client, "seller_lb@example.com")
+def _make_agent(
+    client: TestClient,
+    seller_headers: dict,
+    name: str,
+    description: str = "Writes and fixes code autonomously for paying customers.",
+    price_minor: Optional[int] = None,
+    pricing_model: str = "free",
+    publish: bool = True,
+) -> dict:
+    """Create an agent (default FREE active plan), optionally price + publish it."""
     create = client.post(
         "/api/v1/agents/",
         headers=seller_headers,
         json={
-            "name": next(_AGENT_NAMES),
-            "description": "Writes and fixes code autonomously.",
+            "name": name,
+            "description": description,
             "system_prompt": "You are an expert coding agent.",
             "model_name": "gpt-4o-mini",
             "temperature": 0.3,
-            "max_steps": 40,
             "autonomy_level": "autonomous",
             "sandbox_enabled": True,
-            "advanced_config": {"planning_enabled": True, "reflection_enabled": True},
-            "is_public": True,
-            "is_published": True,
-            "price": 25,
         },
     )
     assert create.status_code == 201, create.text
-    return create.json()["id"]
+    agent = create.json()
+    assert agent["slug"], agent  # slug is mandatory now
+
+    if pricing_model != "free":
+        body: dict = {"model": pricing_model, "currency": "INR"}
+        if pricing_model == "one_time":
+            body["amount_minor"] = price_minor or 2500
+        elif pricing_model == "pay_per_execution":
+            body["amount_minor"] = price_minor or 500
+            body["runs_per_pack"] = 10
+        plan = client.post(f"/api/v1/creator/agents/{agent['id']}/pricing", headers=seller_headers, json=body)
+        assert plan.status_code == 201, plan.text
+        assert plan.json()["is_active"] is True
+
+    if publish:
+        pub = client.post(f"/api/v1/marketplace/agents/{agent['id']}/publish", headers=seller_headers)
+        assert pub.status_code == 200, pub.text
+        assert pub.json()["status"] == "published"
+    return agent
 
 
-def test_purchase_writes_credit_ledger(client: TestClient, db: Session):
-    agent_id = _make_priced_agent(client)
-    buyer_headers = _register(client, "buyer_lb@example.com")
+# --- Public catalog: no secrets leak, viewer flags ---------------------------------
 
-    purchase = client.post(f"/api/v1/marketplace/agents/{agent_id}/purchase", headers=buyer_headers)
-    assert purchase.status_code == 200, purchase.text
-    body = purchase.json()
-    assert body["price_paid"] == 25
-    assert body["credits_remaining"] == 975  # fresh user starts at 1000
-    assert body["cloned_agent_id"]
 
-    # Ledger invariants: exactly one debit (buyer) and one credit (seller)
-    txs = (
-        db.query(CreditTransaction)
-        .filter(CreditTransaction.agent_id == agent_id, CreditTransaction.reason != "run_meter")
-        .all()
+def test_public_catalog_hides_prompts(client: TestClient):
+    headers = _register(client, "catalog_seller@example.com")
+    agent = _make_agent(client, headers, "Catalog Secret Agent", publish=True)
+
+    # Anonymous browse is allowed
+    listing = client.get("/api/v1/marketplace/agents")
+    assert listing.status_code == 200, listing.text
+    card = next(a for a in listing.json() if a["id"] == agent["id"])
+    for forbidden in ("system_prompt", "tools_config", "memory_config", "advanced_config"):
+        assert forbidden not in card, forbidden
+
+    detail = client.get(f"/api/v1/marketplace/agents/{agent['slug']}")
+    assert detail.status_code == 200, detail.text
+    detail_body = detail.json()
+    for forbidden in ("system_prompt", "tools_config", "memory_config", "advanced_config"):
+        assert forbidden not in detail_body, forbidden
+    assert detail_body["slug"] == agent["slug"]
+    assert detail_body["pricing"]["model"] == "free"
+
+
+def test_public_detail_404_for_draft(client: TestClient):
+    headers = _register(client, "draft_seller@example.com")
+    agent = _make_agent(client, headers, "Draft Only Agent", publish=False)
+    resp = client.get(f"/api/v1/marketplace/agents/{agent['slug']}")
+    assert resp.status_code == 404
+
+
+def test_unpublished_agents_not_in_catalog(client: TestClient):
+    headers = _register(client, "hidden_seller@example.com")
+    agent = _make_agent(client, headers, "Unlisted Draft", publish=False)
+    listing = client.get("/api/v1/marketplace/agents").json()
+    assert all(a["id"] != agent["id"] for a in listing)
+
+
+def _grant_paid_access(db: Session, buyer_id: int, agent_id: int, source: str = "one_time") -> None:
+    """Simulate a verified purchase by inserting the purchase + entitlement
+    exactly as the verified-checkout path would."""
+    import datetime
+
+    from app.models import Purchase
+    from app.services import ledger
+
+    purchase = Purchase(
+        reference=ledger.generate_reference("pur"),
+        buyer_id=buyer_id,
+        agent_id=agent_id,
+        pricing_model="pay_per_execution" if source == "pay_per_pack" else source,
+        currency="INR",
+        amount_minor=2500,
+        platform_fee_minor=250,
+        creator_earnings_minor=2250,
+        status="paid",
+        paid_at=datetime.datetime.utcnow(),
     )
-    assert len(txs) == 2
-    by_reason = {tx.reason: tx for tx in txs}
-    buyer_tx = by_reason["agent_purchase"]
-    seller_tx = by_reason["agent_sale"]
-    assert buyer_tx.amount == -25 and seller_tx.amount == 25
-    assert buyer_tx.balance_after == 975 and seller_tx.balance_after == 1025
-    # Shared reference id links both sides of the trade
-    assert buyer_tx.reference_id == seller_tx.reference_id
+    db.add(purchase)
+    db.flush()
+    ledger.upsert_entitlement(db, buyer_id, agent_id, source=source, purchase_id=purchase.id)
+    db.commit()
 
-    # Seller dashboard sees the earnings
-    stats = client.get(
-        "/api/v1/users/me/stats", headers=_register(client, "seller_lb@example.com")
-    ).json()
-    assert stats["earnings"] >= 25
-    assert stats["credits"] >= 1025
+
+# --- Clone gating: paid agents require (verified) purchase; free clone freely ----
+
+
+def test_free_agent_clonable_without_purchase(client: TestClient):
+    seller = _register(client, "clone_free_seller@example.com")
+    free = _make_agent(client, seller, "Clone Gating Free Agent")
+
+    buyer = _register(client, "clone_free_buyer@example.com")
+    clone = client.post(f"/api/v1/marketplace/agents/{free['id']}/clone", headers=buyer)
+    assert clone.status_code == 200, clone.text
+    body = clone.json()
+    assert body["name"].endswith("(Clone)")
+    assert body["price"] == 0 and body["is_published"] is False
+
+
+def test_paid_agent_clone_blocked_until_purchase(client: TestClient, db: Session):
+    seller = _register(client, "clone_paid_seller@example.com")
+    paid = _make_agent(client, seller, "Clone Gating Paid Agent", pricing_model="one_time")
+
+    buyer_headers = _register(client, "clone_paid_buyer@example.com")
+    buyer_id = client.get("/api/v1/users/me", headers=buyer_headers).json()["id"]
+
+    # Blocked before purchase
+    denied = client.post(f"/api/v1/marketplace/agents/{paid['id']}/clone", headers=buyer_headers)
+    assert denied.status_code == 402, denied.text
+    assert "purchase" in str(denied.json().get("detail", "")).lower()
+
+    # Owner can always clone their own agent
+    owner_clone = client.post(f"/api/v1/marketplace/agents/{paid['id']}/clone", headers=seller)
+    assert owner_clone.status_code == 200, owner_clone.text
+
+    # A verified entitlement (as granted by a real verified checkout) unlocks cloning
+    _grant_paid_access(db, buyer_id, paid["id"])
+    again = client.post(f"/api/v1/marketplace/agents/{paid['id']}/clone", headers=buyer_headers)
+    assert again.status_code == 200, again.text
+
+
+# --- Listing flags -----------------------------------------------------------------
+
+
+def test_marketplace_listing_exposes_flags(client: TestClient):
+    seller = _register(client, "flags_seller@example.com")
+    paid = _make_agent(client, seller, "Flags Paid Agent", pricing_model="one_time")
+    free = _make_agent(client, seller, "Flags Free Agent")
+
+    buyer = _register(client, "flags_buyer@example.com")
+    listing = client.get("/api/v1/marketplace/agents", headers=buyer).json()
+    paid_card = next(a for a in listing if a["id"] == paid["id"])
+    free_card = next(a for a in listing if a["id"] == free["id"])
+
+    # Not bought yet: paid agent is locked, free agent is cloneable
+    assert paid_card["purchased"] is False and not paid_card["owned_by_viewer"]
+    assert free_card["pricing"]["model"] == "free"
+    assert paid_card["pricing"]["model"] == "one_time"
+    assert paid_card["pricing"]["amount_minor"] == 2500
+
+    # Seller sees their own paid agent as owned
+    seller_listing = client.get("/api/v1/marketplace/agents", headers=seller).json()
+    owned = next(a for a in seller_listing if a["id"] == paid["id"])
+    assert owned["owned_by_viewer"] is True and owned["purchased"] is True
+
+
+# --- Ratings -----------------------------------------------------------------------
+
+
+def test_rating_flow_verified_flag(client: TestClient, db: Session):
+    from app.models import AgentRating, User
+
+    seller = _register(client, "rate_seller@example.com")
+    agent = _make_agent(client, seller, "Rated Free Agent")
+    rater = _register(client, "rate_buyer@example.com")
+
+    rating = client.post(
+        f"/api/v1/marketplace/agents/{agent['id']}/rate", headers=rater, json={"rating": 5, "review": "great"}
+    )
+    assert rating.status_code == 200, rating.text
+    assert rating.json()["rating"] == 5
+
+    summary = client.get(f"/api/v1/marketplace/agents/{agent['id']}/rating-summary").json()
+    assert summary["average_rating"] == 5.0
+    assert summary["rating_count"] == 1
+
+    lst = client.get(f"/api/v1/marketplace/agents/{agent['id']}/ratings").json()
+    assert len(lst) == 1 and lst[0]["review"] == "great"
+
+    # Second rating overwrites (upsert)
+    rating2 = client.post(
+        f"/api/v1/marketplace/agents/{agent['id']}/rate", headers=rater, json={"rating": 3, "review": "ok"}
+    )
+    assert rating2.status_code == 200
+    rows = db.query(AgentRating).filter(AgentRating.agent_id == agent["id"]).all()
+    assert len(rows) == 1 and rows[0].rating == 3
+
+    # Rating another user's unpublished agent 404s
+    headers_other = _register(client, "rate_other@example.com")
+    other_agent = _make_agent(client, headers_other, "Rate Draft", publish=False)
+    resp = client.post(
+        f"/api/v1/marketplace/agents/{other_agent['id']}/rate", headers=rater, json={"rating": 5}
+    )
+    assert resp.status_code == 404
+
+
+# --- Leaderboard -------------------------------------------------------------------
 
 
 def test_leaderboard_ranks_published_agents(client: TestClient):
-    agent_id = _make_priced_agent(client)
+    agent = _make_agent(client, _register(client, "seller_lb@example.com"), "Premier Coding Agent Alpha")
     rater_headers = _register(client, "rater_lb@example.com")
-    client.post(f"/api/v1/marketplace/agents/{agent_id}/rate",
-                headers=rater_headers, json={"rating": 5, "review": "excellent"})
+    client.post(
+        f"/api/v1/marketplace/agents/{agent['id']}/rate", headers=rater_headers, json={"rating": 5, "review": "excellent"}
+    )
 
     lb = client.get("/api/v1/marketplace/leaderboard", headers=rater_headers)
     assert lb.status_code == 200, lb.text
     entries = lb.json()
     assert isinstance(entries, list) and entries
 
-    entry = next(e for e in entries if e["agent_id"] == agent_id)
+    entry = next(e for e in entries if e["agent_id"] == agent["id"])
     assert entry["rank"] >= 1
     assert entry["rating_count"] == 1 and entry["avg_rating"] == 5.0
     assert entry["score"] == 102.0  # 5*20 + 1*2, no usage yet
     assert entry["sandbox_enabled"] is True
     assert entry["owner_email"] == "seller_lb@example.com"
+    assert entry["pricing_model"] == "free"
     # Ranks are unique and ascending across the board
     ranks = [e["rank"] for e in entries]
     assert ranks == sorted(ranks) and len(set(ranks)) == len(ranks)
@@ -109,84 +268,38 @@ def test_leaderboard_requires_auth(client: TestClient):
     assert resp.status_code in (401, 403)
 
 
-# --- Clone gating: paid agents require purchase; free agents clone freely ----
+# --- Moderation reports ------------------------------------------------------------
 
 
-def _make_custom_agent(client: TestClient, seller_headers: dict, name: str, price: int) -> int:
-    create = client.post(
-        "/api/v1/agents/",
-        headers=seller_headers,
-        json={
-            "name": name,
-            "description": f"{name} agent",
-            "system_prompt": "You are a helpful agent.",
-            "model_name": "gpt-4o-mini",
-            "is_public": True,
-            "is_published": True,
-            "price": price,
-        },
+def test_report_published_agent(client: TestClient, db: Session):
+    from app.models import ModerationReport, User
+
+    seller = _register(client, "report_seller@example.com")
+    agent = _make_agent(client, seller, "Reportable Agent")
+    reporter = _register(client, "reporter@example.com")
+
+    resp = client.post(
+        f"/api/v1/marketplace/agents/{agent['id']}/report",
+        headers=reporter,
+        json={"reason": "spam", "details": "listing is misleading"},
     )
-    assert create.status_code == 201, create.text
-    return create.json()["id"]
+    assert resp.status_code == 201, resp.text
+
+    row = db.query(ModerationReport).filter(ModerationReport.agent_id == agent["id"]).first()
+    assert row is not None and row.status == "open"
+
+    # Requires auth
+    anon = client.post(
+        f"/api/v1/marketplace/agents/{agent['id']}/report", json={"reason": "spam"}
+    )
+    assert anon.status_code in (401, 403)
 
 
-def test_free_agent_clonable_without_purchase(client: TestClient):
-    seller = _register(client, "clone_free_seller@example.com")
-    free_id = _make_custom_agent(client, seller, "Clone Gating Free Agent", price=0)
-
-    buyer = _register(client, "clone_free_buyer@example.com")
-    clone = client.post(f"/api/v1/marketplace/agents/{free_id}/clone", headers=buyer)
-    assert clone.status_code == 200, clone.text
-    body = clone.json()
-    assert body["name"].endswith("(Clone)")
-    assert body["price"] == 0 and body["is_published"] is False
+# --- Categories --------------------------------------------------------------------
 
 
-def test_paid_agent_clone_blocked_until_purchase(client: TestClient):
-    seller = _register(client, "clone_paid_seller@example.com")
-    paid_id = _make_custom_agent(client, seller, "Clone Gating Paid Agent", price=30)
-
-    buyer = _register(client, "clone_paid_buyer@example.com")
-
-    # Blocked before purchase
-    denied = client.post(f"/api/v1/marketplace/agents/{paid_id}/clone", headers=buyer)
-    assert denied.status_code == 402, denied.text
-    assert "purchase" in str(denied.json().get("detail", "")).lower()
-
-    # Owner can always clone their own agent
-    owner_clone = client.post(f"/api/v1/marketplace/agents/{paid_id}/clone", headers=seller)
-    assert owner_clone.status_code == 200, owner_clone.text
-
-    # Purchase (auto-clones) then clone is unlocked
-    purchase = client.post(f"/api/v1/marketplace/agents/{paid_id}/purchase", headers=buyer)
-    assert purchase.status_code == 200, purchase.text
-    assert purchase.json()["cloned_agent_id"]
-
-    again = client.post(f"/api/v1/marketplace/agents/{paid_id}/clone", headers=buyer)
-    assert again.status_code == 200, again.text
-
-
-def test_marketplace_listing_exposes_clonable_flags(client: TestClient):
-    seller = _register(client, "flags_seller@example.com")
-    paid_id = _make_custom_agent(client, seller, "Flags Paid Agent", price=25)
-    free_id = _make_custom_agent(client, seller, "Flags Free Agent", price=0)
-
-    buyer = _register(client, "flags_buyer@example.com")
-    listing = client.get("/api/v1/marketplace/agents", headers=buyer).json()
-    paid = next(a for a in listing if a["id"] == paid_id)
-    free = next(a for a in listing if a["id"] == free_id)
-
-    # Not bought yet: paid agent is locked, free agent is cloneable
-    assert paid["purchased"] is False and paid["clonable"] is False
-    assert free["purchased"] is False and free["clonable"] is True
-
-    # Seller sees their own paid agent as owned/clonable
-    seller_listing = client.get("/api/v1/marketplace/agents", headers=seller).json()
-    owned = next(a for a in seller_listing if a["id"] == paid_id)
-    assert owned["purchased"] is True and owned["clonable"] is True
-
-    # After purchase the paid agent unlocks for the buyer
-    client.post(f"/api/v1/marketplace/agents/{paid_id}/purchase", headers=buyer)
-    listing_after = client.get("/api/v1/marketplace/agents", headers=buyer).json()
-    paid_after = next(a for a in listing_after if a["id"] == paid_id)
-    assert paid_after["purchased"] is True and paid_after["clonable"] is True
+def test_categories_endpoint_returns_seeds(client: TestClient):
+    cats = client.get("/api/v1/marketplace/categories").json()
+    assert isinstance(cats, list) and len(cats) >= 5
+    names = {c["slug"] for c in cats}
+    assert "data-analysis" in names and "coding" in names

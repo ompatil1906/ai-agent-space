@@ -12,6 +12,11 @@ from app.core.database import get_db
 from app.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+# Optional bearer that does not auto-error (public endpoints that attach viewer flags)
+optional_oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_STR}/auth/login",
+    auto_error=False,
+)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -68,6 +73,32 @@ def get_current_active_user(
     return current_user
 
 
+def get_current_user_optional(
+    db: Session = Depends(get_db),
+    token: Optional[str] = Depends(optional_oauth2_scheme),
+) -> Optional[User]:
+    """Resolve the viewer when a valid JWT is present; None otherwise (public endpoints)."""
+    if not token:
+        return None
+    try:
+        return get_current_user(db=db, token=token)
+    except HTTPException:
+        return None
+
+
+def get_current_admin_user(
+    current_user: User = Depends(get_current_active_user),
+) -> User:
+    """Admin guard: is_superuser OR role == admin. Server-side only — the client
+    can never flip roles."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator privileges required",
+        )
+    return current_user
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -77,11 +108,6 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import hashlib
 from app.models import ApiKey
 
-# Optional bearer that does not auto-error
-optional_oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.API_V1_STR}/auth/login",
-    auto_error=False,
-)
 api_key_bearer = HTTPBearer(auto_error=False)
 
 

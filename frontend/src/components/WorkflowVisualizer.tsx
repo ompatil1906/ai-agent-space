@@ -26,12 +26,12 @@ interface WorkflowVisualizerProps {
 
 function NodeCard({ title, subtitle, type, children }: { title: string; subtitle?: string; type: string; children?: React.ReactNode }) {
   const color =
-    type === "supervisor" || type === "hierarchical" ? "border-blue-500" :
-    type === "parallel" || type === "map_reduce" || type === "ensemble" ? "border-purple-500" :
-    type === "debate" || type === "consensus" ? "border-orange-500" :
-    type === "sequential" ? "border-green-500" :
-    type === "plan_execute" ? "border-teal-500" :
-    type === "critique_revise" ? "border-indigo-500" : "border-gray-400";
+    type === "supervisor" || type === "hierarchical" ? "border-(--chart-1)" :
+    type === "parallel" || type === "map_reduce" || type === "ensemble" ? "border-(--chart-2)" :
+    type === "debate" || type === "consensus" ? "border-(--chart-5)" :
+    type === "sequential" ? "border-(--chart-4)" :
+    type === "plan_execute" ? "border-(--chart-3)" :
+    type === "critique_revise" ? "border-(--chart-1)" : "border";
 
   return (
     <Card className={`border-2 ${color} shadow-sm`}>
