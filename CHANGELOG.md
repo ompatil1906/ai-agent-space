@@ -33,3 +33,11 @@
 
 ## [0.x] - Earlier
 - Initial scaffolding and iterative feature development
+
+## [1.0.2] - 2026-10-24
+### Added
+- Professional .env.example with all required configuration variables for backend, LLM providers, CORS, sandbox, and frontend
+- Clear documentation for environment setup to make the foundation easier to run locally or deploy
+
+### Changed
+- Foundation strengthened for easier onboarding and production readiness
