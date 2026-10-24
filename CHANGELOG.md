@@ -1,0 +1,56 @@
+# Changelog
+
+## [1.0.3] - 2026-10-24
+### Added
+- Professional Makefile for easy foundation setup, install, dev, test, and Docker commands
+- Improved developer experience for Phase 1 onboarding
+
+### Changed
+- README Quick Start now highlights Makefile as recommended path
+
+
+## [1.0.2] - 2026-10-24
+### Added
+- Professional .env.example with all required configuration variables for backend, LLM providers, CORS, sandbox, and frontend
+- Clear documentation for environment setup to make the foundation easier to run locally or deploy
+
+### Fixed
+- Relaxed ormsgpack pin to >=1.12.2 to support Python 3.10/3.11 environments (1.13.0 dropped 3.10 support)
+- Improved dependency installability for the foundation
+
+### Changed
+- Foundation strengthened for broader compatibility and easier onboarding/production readiness
+
+## [1.0.1] - 2026-10-24
+### Added
+- Basic pytest suite for authentication foundation (register, login, me, health)
+- Improved testability for Phase 1
+- Database connectivity verification in `/health` endpoint
+
+### Changed
+- API version bumped to 1.0.1
+- Health check now returns database status for better observability
+
+## [1.0.0] - 2026-10-24
+
+### Added
+- Solid foundation: modular project structure, domain-split SQLAlchemy models, JWT authentication, basic agent CRUD
+- Agent Builder with visual + YAML support and multi-agent workflow patterns
+- LangGraph-based runtime with ReAct, Plan-and-Execute, Reflexion, and advanced multi-agent graphs
+- Full MCP integration (stdio, SSE, streamable HTTP) with tool/resource/prompt discovery
+- Docker-based sandboxed code execution with resource limits
+- Marketplace (publish, browse, clone, ratings, credits)
+- Observability: run traces, token/cost tracking, evaluations, dashboard
+- Streaming agent runs via SSE
+- Provider keys and API key management
+
+### Changed
+- Professionalized README with clear architecture, phases, and setup instructions
+- Improved API root and health endpoints with versioning
+- Cleaner logging configuration
+
+### Fixed
+- Various stability and typing improvements across models and services
+
+## [0.x] - Earlier
+- Initial scaffolding and iterative feature development

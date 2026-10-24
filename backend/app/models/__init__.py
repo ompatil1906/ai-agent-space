@@ -1,18 +1,11 @@
 # Re-export models for easy imports
-from app.models.user import (
-    User,
-    Agent,
-    AgentRun,
-    AgentVersion,
+from app.models.user import User
+from app.models.agent import Agent, AgentVersion
+from app.models.run import AgentRun, ToolApproval
+from app.models.marketplace import (
     AgentRating,
     AgentEvaluation,
     CreditTransaction,
-    ToolApproval,
-    ApiKey,
-    MCPServer,
-    ProviderKey,
-)
-from app.models.marketplace import (
     CreatorProfile,
     AgentCategory,
     AgentPricingPlan,
@@ -28,6 +21,7 @@ from app.models.marketplace import (
     ModerationReport,
     PlatformSetting,
 )
+from app.models.mcp import ApiKey, ProviderKey, MCPServer
 
 __all__ = [
     "User",

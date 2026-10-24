@@ -1,3 +1,6 @@
+"""Basic tests for authentication foundation and health."""
+
+
 def test_register_and_login(client):
     # Register
     resp = client.post(
@@ -15,7 +18,9 @@ def test_register_and_login(client):
         data={"username": "new@example.com", "password": "secret123"},
     )
     assert resp.status_code == 200
-    assert "access_token" in resp.json()
+    token_data = resp.json()
+    assert "access_token" in token_data
+    assert token_data["token_type"] == "bearer"
 
 
 def test_me_endpoint(client, auth_headers, test_user):
@@ -31,7 +36,6 @@ def test_case_insensitive_email_login(client):
         json={"email": "MixedCase@Example.COM", "password": "secret123", "full_name": "Case User"},
     )
     assert resp.status_code == 201
-    # Email is normalized on storage, never lowercased in the response for legacy users
     assert resp.json()["email"] == "mixedcase@example.com"
 
     resp = client.post(
@@ -46,3 +50,12 @@ def test_case_insensitive_email_login(client):
         data={"username": "mixedcase@example.com", "password": "wrongpass"},
     )
     assert resp.status_code == 401
+
+
+def test_health(client):
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["database"] == "ok"
+    assert "version" in data
