@@ -1,4 +1,10 @@
 # Changelog
+## [1.0.10] - 2026-10-25
+### Changed
+- Final solidification of Phase 1 foundation: verified complete project structure, FastAPI backend with SQLAlchemy models (User, Agent, AgentVersion, Run, MarketplaceListing and related), JWT authentication, database setup, and Next.js 15+ frontend skeleton with Tailwind + shadcn/ui
+- Improved version consistency across API and documentation
+- Production-leaning foundation ready for advanced agent runtime, MCP, and marketplace features
+
 ## [1.0.9] - 2026-10-25
 ### Changed
 - Added professional badges to README for license, Python, Next.js, and FastAPI
