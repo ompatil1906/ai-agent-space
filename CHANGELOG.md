@@ -1,4 +1,9 @@
 # Changelog
+## [1.0.5] - 2026-10-25
+### Changed
+- Bumped API version to 1.0.5 for continued foundation polish
+- Enhanced readiness for production deployment of Phase 1 foundation
+
 
 ## [1.0.4] - 2026-10-25
 ### Changed

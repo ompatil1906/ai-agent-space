@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-API_VERSION = "1.0.4"
+API_VERSION = "1.0.5"
 
 
 @asynccontextmanager
@@ -81,3 +81,14 @@ def health_check(db: Session = Depends(get_db)):
         "version": API_VERSION,
         "database": db_status,
     }
+
+
+@app.get("/ready")
+def readiness_check(db: Session = Depends(get_db)):
+    """Readiness probe for orchestration (Kubernetes, etc.)."""
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "ready", "version": API_VERSION}
+    except Exception as e:
+        logger.error("Readiness check failed: %s", e)
+        raise HTTPException(status_code=503, detail="Service not ready")
