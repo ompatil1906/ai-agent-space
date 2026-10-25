@@ -1,5 +1,11 @@
 # AI Agent Space
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-15+-black.svg)](https://nextjs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com/)
+
+
 **AI Agent Space** is an open-source platform for creating, configuring, running, evaluating, publishing, discovering, buying, and selling powerful autonomous AI agents.
 
 Build Devin-level agents with long-horizon planning, multi-step reasoning, tool use (including full MCP support), code writing & execution in secure sandboxes, self-reflection, multi-agent collaboration, and the ability to complete complex software engineering and general tasks with minimal human intervention.
@@ -196,4 +202,4 @@ Built for the future of autonomous AI agents.
 
 ## Status
 
-**v1.0.8** — Solid foundation complete with hardened health checks, auth tests, and improved dependency compatibility. Phases 1–3 implemented. Marketplace, dashboard, and evaluation features active. Demo seed script added. See [CHANGELOG.md](CHANGELOG.md).
+**v1.0.9** — Foundation solidified and production-ready with hardened health checks, auth tests, and improved dependency compatibility. Phases 1–3 implemented. Marketplace, dashboard, and evaluation features active. Demo seed script added. See [CHANGELOG.md](CHANGELOG.md).

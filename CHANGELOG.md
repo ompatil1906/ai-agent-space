@@ -1,4 +1,10 @@
 # Changelog
+## [1.0.9] - 2026-10-25
+### Changed
+- Added professional badges to README for license, Python, Next.js, and FastAPI
+- Bumped version to 1.0.9 reflecting solid, production-ready Phase 1 foundation
+- Ensured all initial project structure, backend (FastAPI + DB + auth), and Next.js skeleton are complete and documented
+
 ## [1.0.8] - 2026-10-25
 ### Added
 - Demo seed script (`backend/scripts/seed_demo.py`) for quick-start sample user and agents
