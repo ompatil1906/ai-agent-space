@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.4] - 2026-10-25
+### Changed
+- Bumped API version to 1.0.4
+- Strengthened foundation documentation and versioning for production readiness
+- Ensured clean project structure alignment with Phase 1 requirements
+
 ## [1.0.3] - 2026-10-24
 ### Added
 - Professional Makefile for easy foundation setup, install, dev, test, and Docker commands
@@ -7,7 +13,6 @@
 
 ### Changed
 - README Quick Start now highlights Makefile as recommended path
-
 
 ## [1.0.2] - 2026-10-24
 ### Added
@@ -28,8 +33,7 @@
 - Database connectivity verification in `/health` endpoint
 
 ### Changed
-- API version bumped to 1.0.1
-- Health check now returns database status for better observability
+- Foundation hardened for reliability
 
 ## [1.0.0] - 2026-10-24
 
