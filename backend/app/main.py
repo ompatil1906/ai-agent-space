@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-API_VERSION = "1.0.10"
+API_VERSION = "1.0.11"
 
 
 @asynccontextmanager
