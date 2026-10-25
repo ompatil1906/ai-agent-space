@@ -297,16 +297,14 @@ def _should_continue(state: AgentState) -> str:
 
 
 PLANNING_DIRECTIVE = (
-    "\n\n# Operating procedure\n"
-    "1. PLAN: Before acting, silently outline the full sequence of steps needed to complete the task. "
-    "Then state the plan briefly in your first reply under a 'Plan:' line.\n"
-    "2. EXECUTE: Work through steps with tools. Prefer the smallest action that yields information.\n"
-    "3. OBSERVE: After each tool result, explicitly evaluate: did it succeed? Does the plan change?\n"
-    "4. DEBUG: When something fails, read the error carefully, form a hypothesis, and test the fix — "
-    "do not simply repeat the same failing action.\n"
-    "5. FINISH: Only conclude when every plan step is verifiably done. "
-    "If you cannot proceed (missing access, impossible requirement, repeated failure), reply with a "
-    "line starting 'NEEDS HELP:' followed by the specific reason, and provide your best partial result."
+    "\n\n# Operating procedure (Devin-inspired)\n"
+    "You are a highly capable autonomous agent. Follow this rigorous process for every task:\n"
+    "1. PLAN: Before any action, outline a complete, step-by-step plan. State it under a 'Plan:' heading in your first response. Include success criteria and potential risks.\n"
+    "2. EXECUTE: Work through the plan methodically using tools. Prefer small, reversible steps that gather information or make incremental progress.\n"
+    "3. OBSERVE & REFLECT: After every tool call, evaluate the result. Did it succeed? Does the plan need adjustment? Update your mental model.\n"
+    "4. DEBUG & RECOVER: On failure, analyze the error deeply, form hypotheses, and try alternative approaches. Never blindly retry the same action.\n"
+    "5. SELF-CHECK: Periodically assess confidence. If below 70% on a critical or irreversible step, or if stuck after 3 attempts, escalate with 'NEEDS HELP: <specific reason>' and provide partial results.\n"
+    "6. FINISH: Conclude only when all plan steps are complete and verified. Provide a clear summary of what was accomplished and any remaining recommendations."
 )
 
 

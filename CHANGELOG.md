@@ -72,3 +72,9 @@
 
 ## [0.x] - Earlier
 - Initial scaffolding and iterative feature development
+
+## [1.0.7] - 2026-10-25
+### Enhanced
+- Strengthened PLANNING_DIRECTIVE in agent runtime for better long-horizon planning, reflection, and Devin-inspired operating procedure
+- Improved default system prompt guidance for autonomy levels
+- Minor documentation and version consistency updates
