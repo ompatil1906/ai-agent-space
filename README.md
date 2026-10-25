@@ -98,7 +98,7 @@ The place where the best autonomous agents live and are shared. Users can:
 
 ## Quick Start
 
-**Foundation Status:** Phase 1 complete (v1.0.7) — solid project structure, database models, authentication, and frontend skeleton ready. Phases 1–3 implemented with marketplace and evaluation features active.
+**Foundation Status:** Phase 1 complete (v1.0.8) — solid project structure, database models, authentication, and frontend skeleton ready. Phases 1–3 implemented with marketplace and evaluation features active.
 
 ### Using Makefile (recommended for local development)
 ```bash
@@ -107,6 +107,14 @@ make dev              # Run backend + frontend
 # Or separately:
 make dev-backend
 make dev-frontend
+```
+
+### Demo Data
+```bash
+cd backend
+source venv/bin/activate
+python scripts/seed_demo.py
+# Login with demo@aiagentspace.dev / demo1234
 ```
 
 ### Manual
@@ -188,4 +196,4 @@ Built for the future of autonomous AI agents.
 
 ## Status
 
-**v1.0.7** — Solid foundation complete with hardened health checks, auth tests, and improved dependency compatibility. Phases 1–3 implemented. Marketplace, dashboard, and evaluation features active. See [CHANGELOG.md](CHANGELOG.md).
+**v1.0.8** — Solid foundation complete with hardened health checks, auth tests, and improved dependency compatibility. Phases 1–3 implemented. Marketplace, dashboard, and evaluation features active. Demo seed script added. See [CHANGELOG.md](CHANGELOG.md).

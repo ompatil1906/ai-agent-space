@@ -1,4 +1,13 @@
 # Changelog
+## [1.0.8] - 2026-10-25
+### Added
+- Demo seed script (`backend/scripts/seed_demo.py`) for quick-start sample user and agents
+- Improved onboarding documentation references
+
+### Changed
+- Bumped API version to 1.0.8
+- Continued foundation polish for production readiness
+
 ## [1.0.7] - 2026-10-25
 ### Changed
 - Cleaned and professionalized README Quick Start section for better developer onboarding
