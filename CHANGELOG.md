@@ -1,4 +1,10 @@
 # Changelog
+## [1.0.7] - 2026-10-25
+### Changed
+- Cleaned and professionalized README Quick Start section for better developer onboarding
+- Updated foundation status to v1.0.7 reflecting complete Phases 1–3 and active marketplace/evaluation features
+- Ensured consistency across documentation for production-leaning foundation
+
 ## [1.0.6] - 2026-10-25
 ### Added
 - Complete Phase 1 foundation solidification: robust database models (User, Agent, AgentVersion, Run, MarketplaceListing), JWT authentication, Alembic-ready migrations, and professional project structure

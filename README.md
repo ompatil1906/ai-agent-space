@@ -98,27 +98,25 @@ The place where the best autonomous agents live and are shared. Users can:
 
 ## Quick Start
 
-**Foundation Status:** Phase 1 complete (v1.0.6) — solid project structure, database models, authentication, and frontend skeleton ready for agent runtime.
-
+**Foundation Status:** Phase 1 complete (v1.0.7) — solid project structure, database models, authentication, and frontend skeleton ready. Phases 1–3 implemented with marketplace and evaluation features active.
 
 ### Using Makefile (recommended for local development)
 ```bash
 make install          # Install all deps
 make dev              # Run backend + frontend
-# Or separately: make dev-backend ## Quick Start
-
-**Foundation Status:** Phase 1 complete (v1.0.6) — solid project structure, database models, authentication, and frontend skeleton ready for agent runtime.
-## Quick Start make dev-frontend
+# Or separately:
+make dev-backend
+make dev-frontend
 ```
 
 ### Manual
 
-### Prerequisites
+#### Prerequisites
 - Python 3.11+
 - Node.js 18+
 - Docker (recommended for sandbox execution)
 
-### Backend
+#### Backend
 ```bash
 cd backend
 python -m venv venv
@@ -129,7 +127,7 @@ cp .env.example .env
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Frontend
+#### Frontend
 ```bash
 cd frontend
 npm install
