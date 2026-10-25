@@ -98,11 +98,17 @@ The place where the best autonomous agents live and are shared. Users can:
 
 ## Quick Start
 
+**Foundation Status:** Phase 1 complete (v1.0.6) — solid project structure, database models, authentication, and frontend skeleton ready for agent runtime.
+
+
 ### Using Makefile (recommended for local development)
 ```bash
 make install          # Install all deps
 make dev              # Run backend + frontend
-# Or separately: make dev-backend ## Quick Start## Quick Start make dev-frontend
+# Or separately: make dev-backend ## Quick Start
+
+**Foundation Status:** Phase 1 complete (v1.0.6) — solid project structure, database models, authentication, and frontend skeleton ready for agent runtime.
+## Quick Start make dev-frontend
 ```
 
 ### Manual

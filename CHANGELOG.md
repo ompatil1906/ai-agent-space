@@ -1,4 +1,13 @@
 # Changelog
+## [1.0.6] - 2026-10-25
+### Added
+- Complete Phase 1 foundation solidification: robust database models (User, Agent, AgentVersion, Run, MarketplaceListing), JWT authentication, Alembic-ready migrations, and professional project structure
+- Enhanced health check and logging for production readiness
+- Full support for Next.js 15+ App Router frontend skeleton with Tailwind + shadcn/ui
+
+### Changed
+- Bumped API version to 1.0.6
+- Improved overall foundation quality for autonomous agent platform
 ## [1.0.5] - 2026-10-25
 ### Changed
 - Bumped API version to 1.0.5 for continued foundation polish
