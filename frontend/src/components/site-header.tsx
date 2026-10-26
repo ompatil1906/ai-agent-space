@@ -30,13 +30,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface Me {
   email: string;
   full_name?: string | null;
   role?: string;
   is_superuser?: boolean;
+  avatar_url?: string | null;
 }
+
+const GRADIENT =
+  "bg-gradient-to-br from-indigo-500 to-violet-600 text-[11px] font-semibold text-white";
 
 const NAV_LINKS = [
   { href: "/marketplace", label: "Marketplace", icon: StoreIcon },
@@ -176,26 +181,42 @@ function HeaderInner() {
                   render={
                     <Button
                       variant="ghost"
-                      size="icon-sm"
                       aria-label="Account menu"
-                      className="gap-1.5 rounded-full"
+                      className="gap-1.5 rounded-full pl-1 pr-1.5"
                     >
-                      <span className="flex size-6 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-semibold text-white">
-                        {initials(me)}
-                      </span>
+                      <Avatar className="size-7" aria-hidden="true">
+                        {me?.avatar_url ? (
+                          <AvatarImage src={me.avatar_url} alt="" />
+                        ) : null}
+                        <AvatarFallback className={GRADIENT}>
+                          {initials(me)}
+                        </AvatarFallback>
+                      </Avatar>
                       <ChevronDownIcon className="size-3 text-muted-foreground" />
                     </Button>
                   }
                 />
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuGroup>
-                    <DropdownMenuLabel className="flex flex-col items-start gap-0.5">
-                      <span className="max-w-44 truncate text-sm font-medium text-foreground">
-                        {me?.full_name?.trim() || me?.email}
-                      </span>
-                      <span className="max-w-44 truncate text-xs font-normal text-muted-foreground">
-                        {me?.email}
-                      </span>
+                    <DropdownMenuLabel className="flex items-center gap-2.5 px-1.5 py-2">
+                      <Avatar className="size-9" aria-hidden="true">
+                        {me?.avatar_url ? (
+                          <AvatarImage src={me.avatar_url} alt="" />
+                        ) : null}
+                        <AvatarFallback
+                          className={cn(GRADIENT, "text-sm")}
+                        >
+                          {initials(me)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex min-w-0 flex-col items-start gap-0.5">
+                        <span className="min-w-0 max-w-44 truncate text-sm font-medium text-foreground">
+                          {me?.full_name?.trim() || me?.email}
+                        </span>
+                        <span className="min-w-0 max-w-44 truncate text-xs font-normal text-muted-foreground">
+                          {me?.email}
+                        </span>
+                      </div>
                     </DropdownMenuLabel>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />

@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PageHeader, EmptyState } from "@/components/ui-page";
+import { Markdown } from "@/components/markdown";
 import { api, getToken, messageFromError, useApiQuery } from "@/lib/api";
 import { cn } from "cn";
 
@@ -539,9 +540,11 @@ function EvaluationsContent() {
                     agent output
                   </p>
                   <ScrollArea className="h-32 rounded-lg bg-muted/40 ring-1 ring-foreground/10">
-                    <pre className="block min-w-full whitespace-pre-wrap p-3 font-mono text-[11px] leading-relaxed text-foreground/90">
-                      {result.agent_output}
-                    </pre>
+                    <div className="p-3">
+                      <Markdown className="text-[13px] [&_>*:first-child]:mt-0 [&_>*:last-child]:mb-0">
+                        {result.agent_output}
+                      </Markdown>
+                    </div>
                   </ScrollArea>
                 </div>
               )}
@@ -597,9 +600,11 @@ function EvaluationsContent() {
                     agent output
                   </p>
                   <ScrollArea className="max-h-40 rounded-lg bg-muted/40 ring-1 ring-foreground/10">
-                    <pre className="block min-w-full whitespace-pre-wrap p-3 font-mono text-[11px] leading-relaxed text-foreground/90">
-                      {detail.agent_output}
-                    </pre>
+                    <div className="p-3">
+                      <Markdown className="text-[13px] [&_>*:first-child]:mt-0 [&_>*:last-child]:mb-0">
+                        {detail.agent_output}
+                      </Markdown>
+                    </div>
                   </ScrollArea>
                 </div>
               )}

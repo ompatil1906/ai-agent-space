@@ -20,6 +20,7 @@ import { API_BASE, api, getToken } from "@/lib/api";
 import AgentTasksPanel from "@/components/AgentTasksPanel";
 import WorkflowVisualizer from "@/components/WorkflowVisualizer";
 import AgentLanding from "@/components/marketplace/agent-landing";
+import { Markdown } from "@/components/markdown";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -537,13 +538,19 @@ function AgentRunContent() {
             {chatHistory.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
+                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
                     msg.role === "user"
                       ? "bg-primary text-primary-foreground"
                       : "bg-background border border-border"
                   }`}
                 >
-                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                  {msg.role === "assistant" ? (
+                    <Markdown className="[&_>*:first-child]:mt-0 [&_>*:last-child]:mb-0">
+                      {msg.content}
+                    </Markdown>
+                  ) : (
+                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                  )}
                 </div>
               </div>
             ))}
@@ -558,8 +565,13 @@ function AgentRunContent() {
                     <p key={li} className="mt-1.5 text-xs text-muted-foreground">{line}</p>
                   ))}
                   {events.filter((e) => e.type === "token").length > 0 && (
-                    <div className="mt-2 whitespace-pre-wrap">
-                      {events.filter((e) => e.type === "token").map((e) => e.content || "").join("")}
+                    <div className="mt-2">
+                      <Markdown>
+                        {events
+                          .filter((e) => e.type === "token")
+                          .map((e) => e.content || "")
+                          .join("")}
+                      </Markdown>
                     </div>
                   )}
                 </div>

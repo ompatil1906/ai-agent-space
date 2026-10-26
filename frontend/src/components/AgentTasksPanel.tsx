@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Markdown } from "@/components/markdown";
 import { API_BASE } from "@/lib/api";
 
 interface Task {
@@ -189,9 +190,11 @@ export default function AgentTasksPanel({
                     </pre>
                   )}
                   {t.output && (
-                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/40 p-3 text-xs leading-relaxed">
-                      {t.output}
-                    </pre>
+                    <div className="max-h-64 overflow-auto rounded-md border border-border bg-muted/40 p-3">
+                      <Markdown className="[&_>*:first-child]:mt-0 [&_>*:last-child]:mb-0">
+                        {t.output}
+                      </Markdown>
+                    </div>
                   )}
                   <div className="flex gap-2">
                     {t.status === "running" && (
