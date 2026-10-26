@@ -17,7 +17,6 @@ import {
   MessageSquareQuoteIcon,
   RocketIcon,
   ShieldCheckIcon,
-  StarIcon,
   WorkflowIcon,
 } from "lucide-react";
 import { api, getToken, AUTH_EVENT } from "@/lib/api";
@@ -162,9 +161,8 @@ export default function AgentLanding({ slug }: { slug: string }) {
 
   if (notFound) {
     return (
-      <div className="mx-auto w-full max-w-5xl px-4 py-16 sm:px-6">
-        <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">marketplace</p>
-        <h1 className="mt-2 text-2xl font-medium tracking-tight">Agent not found</h1>
+      <div className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-12">
+        <h1 className="text-2xl font-medium tracking-tight">Agent not found</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           This listing is not published (or was taken down by moderation).
         </p>
@@ -177,7 +175,7 @@ export default function AgentLanding({ slug }: { slug: string }) {
 
   if (!agent) {
     return (
-      <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-16 sm:px-6">
+      <div className="mx-auto w-full max-w-5xl space-y-4 px-4 py-10 sm:px-6 sm:py-12">
         <Skeleton className="h-44 w-full rounded-2xl" />
         <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
           <div className="space-y-3">
@@ -195,14 +193,14 @@ export default function AgentLanding({ slug }: { slug: string }) {
   const freePlan = !agent.pricing || agent.pricing.model === "free";
   const creator = agent.owner_display_name || agent.owner_email || "unknown creator";
   const stats = [
-    { label: "runs", value: agent.run_count },
-    { label: "sales", value: agent.sales_count },
-    { label: "ratings", value: agent.rating_count },
-    { label: "versions", value: agent.version_count },
+    { label: "Runs", value: agent.run_count },
+    { label: "Sales", value: agent.sales_count },
+    { label: "Ratings", value: agent.rating_count },
+    { label: "Versions", value: agent.version_count },
   ];
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 pb-20 pt-6 sm:px-6">
+    <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-12">
       {/* breadcrumb */}
       <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Link href="/marketplace" className="transition-colors hover:text-foreground">
@@ -235,9 +233,7 @@ export default function AgentLanding({ slug }: { slug: string }) {
                     {agent.name}
                   </h1>
                   {agent.is_featured && (
-                    <Badge className="gap-1 bg-brand/10 font-mono text-brand">
-                      <StarIcon className="size-3" /> featured
-                    </Badge>
+                    <Badge className="bg-brand/10 text-brand">Featured</Badge>
                   )}
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -253,31 +249,25 @@ export default function AgentLanding({ slug }: { slug: string }) {
 
           {/* spec strip */}
           <div className="mt-5 flex flex-wrap gap-1.5">
-            <Badge variant="secondary" className="font-mono text-[11px]">
-              <CpuIcon className="size-3" /> {agent.model_name}
-            </Badge>
-            <Badge variant="outline" className="font-mono text-[11px]">
+            <Badge variant="secondary">{agent.model_name}</Badge>
+            <Badge variant="outline">
               {agent.tools_count} tool{agent.tools_count === 1 ? "" : "s"}
             </Badge>
             {agent.workflow_type !== "single" && (
-              <Badge variant="outline" className="font-mono text-[11px]">
-                <WorkflowIcon className="size-3" /> team · {agent.workflow_type}
-              </Badge>
+              <Badge variant="outline">Team · {agent.workflow_type}</Badge>
             )}
             {agent.sandbox_enabled && (
-              <Badge variant="outline" className="font-mono text-[11px] text-success">
-                sandbox
+              <Badge variant="outline" className="text-success">
+                Sandbox
               </Badge>
             )}
-            <Badge variant="outline" className="font-mono text-[11px]">
-              {agent.autonomy_level}
-            </Badge>
-            <Badge variant="outline" className="font-mono text-[11px]">
+            <Badge variant="outline">{agent.autonomy_level}</Badge>
+            <Badge variant="outline">
               {agent.latest_version || "v1"} · {agent.version_count} version
               {agent.version_count === 1 ? "" : "s"}
             </Badge>
             {agent.tags.slice(0, 4).map((t) => (
-              <Badge key={t} variant="outline" className="font-mono text-[11px] text-muted-foreground">
+              <Badge key={t} variant="outline" className="text-muted-foreground">
                 {t}
               </Badge>
             ))}
@@ -287,7 +277,7 @@ export default function AgentLanding({ slug }: { slug: string }) {
           <dl className="ring-foreground/10 mt-6 grid grid-cols-4 gap-2 rounded-xl bg-card p-3 text-center ring-1">
             {stats.map((s) => (
               <div key={s.label}>
-                <dt className="order-2 text-muted-foreground font-mono text-[10px] uppercase tracking-wider">
+                <dt className="order-2 text-xs text-muted-foreground">
                   {s.label}
                 </dt>
                 <dd className="order-1 text-lg font-medium tracking-tight">{s.value}</dd>
@@ -367,7 +357,7 @@ export default function AgentLanding({ slug }: { slug: string }) {
                     >
                       <div className="min-w-0">
                         {p.title && <p className="mb-0.5 text-sm font-medium">{p.title}</p>}
-                        <p className="text-muted-foreground line-clamp-2 font-mono text-xs">
+                        <p className="text-muted-foreground line-clamp-2 text-sm">
                           {p.prompt}
                         </p>
                       </div>
@@ -433,7 +423,7 @@ export default function AgentLanding({ slug }: { slug: string }) {
                         <span className="text-muted-foreground">
                           {r.user_display_name || r.user_email || "user"}
                         </span>
-                        <span className="text-muted-foreground/60 font-mono text-[10px]">
+                        <span className="text-muted-foreground/60 text-xs">
                           {new Date(r.created_at).toLocaleDateString("en-IN", {
                             year: "numeric",
                             month: "short",
@@ -441,11 +431,8 @@ export default function AgentLanding({ slug }: { slug: string }) {
                           })}
                         </span>
                         {r.verified_purchase && (
-                          <Badge
-                            variant="outline"
-                            className="font-mono text-[10px] text-success"
-                          >
-                            <ShieldCheckIcon className="size-3" /> verified purchase
+                          <Badge variant="outline" className="text-success">
+                            <ShieldCheckIcon className="size-3" /> Verified purchase
                           </Badge>
                         )}
                       </p>
@@ -492,8 +479,8 @@ export default function AgentLanding({ slug }: { slug: string }) {
             <div className="mt-4 space-y-2">
               {hasAccess ? (
                 <>
-                  <Badge variant="outline" className="w-full justify-center border-success/30 bg-success/10 py-1 font-mono text-success">
-                    <ShieldCheckIcon className="size-3" /> you have access
+                  <Badge variant="outline" className="w-full justify-center border-success/30 bg-success/10 py-1 text-success">
+                    <ShieldCheckIcon className="size-3" /> You have access
                   </Badge>
                   <Button className="w-full" render={<Link href={`/agents/${agent.id}`} />}>
                     Open console

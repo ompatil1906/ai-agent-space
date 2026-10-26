@@ -190,7 +190,7 @@ export default function ListingPanel({ agentId }: { agentId: number }) {
   };
 
   if (!state) {
-    return <p className="text-sm text-muted-foreground">loading marketplace panel…</p>;
+    return <p className="text-sm text-muted-foreground">Loading marketplace panel…</p>;
   }
 
   const published = state.status === "published" || state.is_published;
@@ -199,19 +199,18 @@ export default function ListingPanel({ agentId }: { agentId: number }) {
   return (
     <div className="space-y-3 rounded-lg border border-border p-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="font-mono text-sm text-muted-foreground uppercase">Marketplace Listing</h3>
+        <h3 className="text-sm font-medium">Marketplace Listing</h3>
         <div className="flex items-center gap-2">
           <Badge
             variant={published ? "default" : state.status === "pending_review" ? "secondary" : "outline"}
-            className="font-mono text-[10px]"
           >
-            {state.status}
+            {state.status.replace(/_/g, " ")}
           </Badge>
           {published ? (
             <>
               {state.slug && (
                 <Link href={`/agents/${state.slug}`} className="text-xs underline underline-offset-2 hover:text-foreground">
-                  view listing
+                  View listing
                 </Link>
               )}
               <Button size="sm" variant="outline" disabled={busy} onClick={() => flipPublish(false)}>
@@ -285,7 +284,7 @@ export default function ListingPanel({ agentId }: { agentId: number }) {
 
       {/* Pricing */}
       <div className="border-t pt-3">
-        <p className="mb-2 font-mono text-xs text-muted-foreground">
+        <p className="mb-2 text-xs text-muted-foreground">
           Current plan: <span className="text-foreground">{plan ? pricingLabel(plan) : "none"}</span>
           {plan && plan.amount_minor > 0 ? ` (${formatMoney(plan.amount_minor, cur)})` : ""}
         </p>

@@ -49,7 +49,7 @@ export function HomeSearch() {
             key={s}
             type="button"
             onClick={() => router.push(`/marketplace?q=${encodeURIComponent(s)}`)}
-            className="rounded-full border border-transparent font-mono transition-colors hover:border-border hover:text-foreground"
+            className="rounded-full border border-transparent transition-colors hover:border-border hover:text-foreground"
           >
             {s}
           </button>

@@ -199,7 +199,7 @@ function VersionsContent() {
   const latestNumber = versions?.[0]?.version_number;
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-12">
       {/* breadcrumbs — back to the agent list + into the agent console */}
       <nav
         aria-label="Breadcrumb"
@@ -217,7 +217,6 @@ function VersionsContent() {
       </nav>
 
       <PageHeader
-        eyebrow={`agent · ${agentName}`}
         title="Version history"
         description="Append-only snapshots of the agent's full configuration. Restore any previous state — it creates a new version and never overwrites history."
       >
@@ -229,22 +228,22 @@ function VersionsContent() {
 
       <div className="mb-1 flex flex-wrap items-center gap-2">
         {identity?.model_name && (
-          <Badge variant="secondary" className="font-mono text-[10px]">
+          <Badge variant="secondary" className="text-[10px]">
             {identity.model_name}
           </Badge>
         )}
-        <Badge variant="outline" className="font-mono text-[10px]">
+        <Badge variant="outline" className="text-[10px]">
           agent #{agentId}
         </Badge>
       </div>
 
       {/* ------------------------------------------------------- list */}
       <div className="mb-3 flex items-baseline justify-between gap-3">
-        <p className="font-mono text-[11px] tracking-widest text-muted-foreground/70 uppercase">
-          snapshots · newest first
+        <p className="text-sm font-medium text-muted-foreground">
+          Snapshots <span className="text-xs font-normal">· newest first</span>
         </p>
         {token && !versionsLoading && !versionsError && (
-          <p className="font-mono text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {versions?.length ?? 0} version{(versions?.length ?? 0) === 1 ? "" : "s"}
           </p>
         )}
@@ -292,7 +291,7 @@ function VersionsContent() {
                   <div className="flex min-w-0 items-center gap-2.5">
                     <span
                       className={cn(
-                        "shrink-0 rounded-md px-2 py-0.5 font-mono text-xs font-medium ring-1",
+                        "shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ring-1",
                         isLatest
                           ? "bg-brand/10 text-brand ring-brand/30"
                           : "bg-muted text-foreground ring-foreground/10"
@@ -315,7 +314,7 @@ function VersionsContent() {
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <span
-                      className="hidden font-mono text-[11px] text-muted-foreground sm:inline"
+                      className="hidden text-[11px] text-muted-foreground sm:inline"
                       title={fullDate(v.created_at)}
                     >
                       {timeAgo(v.created_at)}
@@ -334,18 +333,18 @@ function VersionsContent() {
                     )}
                   </div>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-foreground">
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                   <span>
-                    model <span className="text-foreground">{v.model_name}</span>
+                    Model <span className="text-foreground">{v.model_name}</span>
                   </span>
                   <span>
-                    temp <span className="text-foreground">{v.temperature}</span>
+                    Temp <span className="text-foreground">{v.temperature}</span>
                   </span>
                   <span>
-                    workflow <span className="text-foreground">{workflowSummary(v)}</span>
+                    Workflow <span className="text-foreground">{workflowSummary(v)}</span>
                   </span>
                   <span>
-                    tools <span className="text-foreground">{v.tools_config.length}</span>
+                    Tools <span className="text-foreground">{v.tools_config.length}</span>
                   </span>
                 </div>
               </div>
@@ -464,16 +463,14 @@ function SnapshotDetails({ version }: { version: AgentVersion }) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
         {meta.map(([k, val]) => (
           <div key={k} className="min-w-0">
-            <p className="font-mono text-[10px] tracking-widest text-muted-foreground/70 uppercase">
-              {k}
-            </p>
+            <p className="text-muted-foreground">{k}</p>
             <p className="mt-0.5 truncate font-medium">{val}</p>
           </div>
         ))}
       </div>
       <div>
-        <p className="mb-1.5 font-mono text-[10px] tracking-widest text-muted-foreground/70 uppercase">
-          snapshot json
+        <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+          Snapshot JSON
         </p>
         <ScrollArea className="h-64 rounded-lg bg-muted/40 ring-1 ring-foreground/10">
           <pre className="block w-max min-w-full p-3 font-mono text-[11px] leading-relaxed text-foreground/90">
@@ -489,7 +486,7 @@ export default function VersionsPage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
+        <div className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-12">
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-[74px] w-full rounded-lg" />

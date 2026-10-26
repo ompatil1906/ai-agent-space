@@ -15,8 +15,7 @@ export function FooterYear() {
 
   return (
     <span suppressHydrationWarning>
-      {year ? `© ${year} AI Agent Space.` : "AI Agent Space."} Payments and
-      payouts are processed by Razorpay.
+      {year || "2026"}
     </span>
   );
 }

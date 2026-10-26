@@ -15,7 +15,6 @@ import {
   StoreIcon,
   WalletIcon,
   XIcon,
-  BotIcon,
 } from "lucide-react";
 import { cn } from "cn";
 import { AUTH_EVENT, api, clearToken, getToken } from "@/lib/api";
@@ -40,17 +39,14 @@ interface Me {
   avatar_url?: string | null;
 }
 
-const GRADIENT =
-  "bg-gradient-to-br from-indigo-500 to-violet-600 text-[11px] font-semibold text-white";
+/* Neutral monogram — the brand accent stays in the buttons. */
+const MONOGRAM = "bg-primary text-primary-foreground text-[11px] font-semibold";
 
+/* Primary nav stays short — account pages live in the account menu. */
 const NAV_LINKS = [
-  { href: "/marketplace", label: "Marketplace", icon: StoreIcon },
-  { href: "/agents", label: "My Agents", icon: BotIcon },
-  { href: "/purchases", label: "Purchases", authOnly: true },
-  { href: "/earnings", label: "Earnings", authOnly: true, icon: WalletIcon },
+  { href: "/marketplace", label: "Marketplace" },
+  { href: "/agents", label: "My Agents" },
   { href: "/mcp-servers", label: "Tools" },
-  { href: "/dashboard", label: "Dashboard", authOnly: true, icon: LayoutDashboardIcon },
-  { href: "/settings", label: "Settings", authOnly: true, icon: SettingsIcon },
 ] as const;
 
 /** Module-level session cache — the header fetches `/users/me` once per token. */
@@ -121,9 +117,6 @@ function HeaderInner() {
   };
 
   const isAdmin = Boolean(me && (me.role === "admin" || me.is_superuser));
-  const links = NAV_LINKS.filter(
-    (l) => authed || !("authOnly" in l && l.authOnly)
-  );
 
   const navLinkClass = (href: string) =>
     cn(
@@ -137,7 +130,7 @@ function HeaderInner() {
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-3 px-4 sm:px-6">
         <Link href="/" className="group flex shrink-0 items-center gap-2.5">
-          <span className="flex size-8 items-center justify-center rounded-lg border border-border/80 bg-zinc-950 p-1 shadow-sm transition-transform duration-200 group-hover:scale-105">
+          <span className="flex size-8 items-center justify-center rounded-lg border border-border/80 bg-zinc-950 p-1 shadow-sm">
             <Image
               src="/logos/icon.svg"
               alt="AI Agent Space logo"
@@ -153,7 +146,7 @@ function HeaderInner() {
 
         {/* Desktop nav */}
         <nav className="ml-2 hidden items-center gap-0.5 lg:flex" aria-label="Primary">
-          {links.map((link) => (
+          {NAV_LINKS.map((link) => (
             <Link key={link.href} href={link.href} className={navLinkClass(link.href)}>
               {link.label}
             </Link>
@@ -170,12 +163,7 @@ function HeaderInner() {
 
           {authed ? (
             <>
-              <Button render={<Link href="/agents" />}>
-                <span data-icon="inline-start">
-                  <BotIcon className="size-4" />
-                </span>
-                New agent
-              </Button>
+              <Button render={<Link href="/agents" />}>New agent</Button>
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
@@ -188,7 +176,7 @@ function HeaderInner() {
                         {me?.avatar_url ? (
                           <AvatarImage src={me.avatar_url} alt="" />
                         ) : null}
-                        <AvatarFallback className={GRADIENT}>
+                        <AvatarFallback className={MONOGRAM}>
                           {initials(me)}
                         </AvatarFallback>
                       </Avatar>
@@ -203,9 +191,7 @@ function HeaderInner() {
                         {me?.avatar_url ? (
                           <AvatarImage src={me.avatar_url} alt="" />
                         ) : null}
-                        <AvatarFallback
-                          className={cn(GRADIENT, "text-sm")}
-                        >
+                        <AvatarFallback className={cn(MONOGRAM, "text-sm")}>
                           {initials(me)}
                         </AvatarFallback>
                       </Avatar>
@@ -281,7 +267,7 @@ function HeaderInner() {
         )}
       >
         <nav className="flex max-h-[420px] flex-col overflow-y-auto px-4 py-3" aria-label="Mobile">
-          {links.map((link) => (
+          {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}

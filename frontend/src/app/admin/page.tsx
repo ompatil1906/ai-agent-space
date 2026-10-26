@@ -65,22 +65,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { EmptyState, PageHeader } from "@/components/ui-page";
+import { EmptyState, PageHeader, StatCard } from "@/components/ui-page";
 import {
   CircleCheckIcon,
   ExternalLinkIcon,
-  FlagTriangleRightIcon,
-  LayoutDashboardIcon,
   MoreHorizontalIcon,
-  ReceiptTextIcon,
   RefreshCwIcon,
-  ScrollTextIcon,
   SearchIcon,
-  Settings2Icon,
-  ShieldCheckIcon,
   StarIcon,
   TriangleAlertIcon,
-  WalletIcon,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ types */
@@ -210,13 +203,13 @@ const VISIBILITY_AGENT_ACTIONS: ReadonlySet<AgentActionValue> = new Set([
 const STATUS_FILTERS = ["pending_review", "published", "rejected", "suspended", "draft"];
 
 const TABS = [
-  { v: "overview", label: "Overview", icon: LayoutDashboardIcon },
-  { v: "moderation", label: "Moderation", icon: ShieldCheckIcon },
-  { v: "orders", label: "Orders", icon: ReceiptTextIcon },
-  { v: "payouts", label: "Payouts", icon: WalletIcon },
-  { v: "reports", label: "Reports", icon: FlagTriangleRightIcon },
-  { v: "settings", label: "Settings", icon: Settings2Icon },
-  { v: "audit", label: "Audit", icon: ScrollTextIcon },
+  { v: "overview", label: "Overview" },
+  { v: "moderation", label: "Moderation" },
+  { v: "orders", label: "Orders" },
+  { v: "payouts", label: "Payouts" },
+  { v: "reports", label: "Reports" },
+  { v: "settings", label: "Settings" },
+  { v: "audit", label: "Audit" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["v"];
@@ -327,18 +320,6 @@ function PayoutStatusBadge({ status }: { status: string }) {
 
 /* ------------------------------------------------------------- fragments */
 
-function StatCard({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
-  return (
-    <div className="rounded-xl bg-card ring-1 ring-foreground/10 px-4 py-3.5">
-      <p className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">{label}</p>
-      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="text-2xl font-medium tracking-tight">{value}</span>
-        {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-      </div>
-    </div>
-  );
-}
-
 function ErrorPanel({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-destructive/10 ring-1 ring-destructive/30 px-4 py-3">
@@ -407,12 +388,7 @@ function SettingsEditor({
 
       <div className="mt-5 space-y-5">
         <div>
-          <Label
-            htmlFor="settings-commission"
-            className="mb-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground"
-          >
-            Commission (basis points)
-          </Label>
+          <Label htmlFor="settings-commission">Commission (basis points)</Label>
           <Input
             id="settings-commission"
             type="number"
@@ -428,12 +404,7 @@ function SettingsEditor({
         </div>
 
         <div>
-          <Label
-            htmlFor="settings-min-payout"
-            className="mb-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground"
-          >
-            Minimum payout (minor units)
-          </Label>
+          <Label htmlFor="settings-min-payout">Minimum payout (minor units)</Label>
           <Input
             id="settings-min-payout"
             type="number"
@@ -448,12 +419,7 @@ function SettingsEditor({
         </div>
 
         <div>
-          <Label
-            htmlFor="settings-moderation"
-            className="mb-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground"
-          >
-            Moderation
-          </Label>
+          <Label htmlFor="settings-moderation">Moderation</Label>
           <Select
             value={draft.moderation}
             onValueChange={(v) => setDraft({ ...draft, moderation: v ?? "off" })}
@@ -472,7 +438,7 @@ function SettingsEditor({
           <Button onClick={() => onSave(draft)} disabled={saving}>
             {saving ? "Saving…" : "Save settings"}
           </Button>
-          <p className="font-mono text-[11px] text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground">
             currency {settings.currency} ·{" "}
             {settings.payments_enabled
               ? `payment mode ${settings.payment_mode}`
@@ -773,7 +739,7 @@ export default function AdminPage() {
 
   if (!checked) {
     return (
-      <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6" aria-busy="true">
+      <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12" aria-busy="true">
         <Skeleton className="h-3 w-24" />
         <Skeleton className="mt-2 h-8 w-56" />
         <Skeleton className="mt-3 hidden h-4 w-96 sm:block" />
@@ -786,8 +752,8 @@ export default function AdminPage() {
 
   if (!token || role !== "admin") {
     return (
-      <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
-        <PageHeader eyebrow="platform" title="Admin" description="Admin-only console." />
+      <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-12">
+        <PageHeader title="Admin" description="Admin-only console." />
         <div className="rounded-2xl border border-dashed border-border px-8 py-12 text-center">
           <p className="font-medium">Access denied</p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -813,18 +779,17 @@ export default function AdminPage() {
   const resolvedReports = (reports ?? []).filter((r) => r.status !== "open");
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
       <PageHeader
-        eyebrow="platform operators"
         title="Admin console"
         description="Moderation, orders, refunds, payouts and platform policy — one control surface."
       >
         {stats?.payments_enabled ? (
-          <Badge variant="secondary" className="font-mono text-[11px]">
+          <Badge variant="secondary" className="text-[11px]">
             payments: {stats.payment_mode || "enabled"}
           </Badge>
         ) : (
-          <Badge variant="outline" className="font-mono text-[11px]">
+          <Badge variant="outline" className="text-[11px]">
             payments disabled (no gateway keys)
           </Badge>
         )}
@@ -837,7 +802,7 @@ export default function AdminPage() {
         <TabsList className="mb-8 flex-wrap">
           {TABS.map((t) => (
             <TabsTrigger key={t.v} value={t.v}>
-              <t.icon className="size-3.5" /> {t.label}
+              {t.label}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -849,24 +814,24 @@ export default function AdminPage() {
           ) : stats ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
-                label="gross volume"
+                label="Gross volume"
                 value={formatMoney(stats.gross_volume_minor, stats.currency)}
-                hint={`${stats.total_paid_purchases} paid orders`}
+                sub={`${stats.total_paid_purchases} paid orders`}
               />
               <StatCard
-                label="platform revenue"
+                label="Platform revenue"
                 value={formatMoney(stats.platform_revenue_minor, stats.currency)}
-                hint="fees from splits"
+                sub="fees from splits"
               />
               <StatCard
-                label="refunded"
+                label="Refunded"
                 value={formatMoney(stats.refunded_minor, stats.currency)}
-                hint="paid back to buyers"
+                sub="paid back to buyers"
               />
               <StatCard
-                label="users"
-                value={stats.total_users}
-                hint={`${stats.published_agents}/${stats.total_agents} agents published`}
+                label="Users"
+                value={String(stats.total_users)}
+                sub={`${stats.published_agents}/${stats.total_agents} agents published`}
               />
               {/* attention strip — spans the grid below the stat cards */}
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-card ring-1 ring-foreground/10 px-4 py-3 sm:col-span-2 lg:col-span-4">
@@ -949,7 +914,6 @@ export default function AdminPage() {
             <ErrorPanel message={agentsQ.error} onRetry={agentsQ.reload} />
           ) : agents && agents.length === 0 ? (
             <EmptyState
-              icon="🛡"
               title={statusFilter || search ? "No listings match" : "Nothing to moderate"}
               hint={
                 statusFilter || search
@@ -1017,7 +981,7 @@ export default function AdminPage() {
                             />
                           )}
                         </p>
-                        <p className="font-mono text-[11px] text-muted-foreground">
+                        <p className="text-[11px] text-muted-foreground">
                           id {a.id} · {a.sales_count} sales
                         </p>
                         {a.moderation_note && (
@@ -1138,7 +1102,6 @@ export default function AdminPage() {
             <ErrorPanel message={ordersQ.error} onRetry={ordersQ.reload} />
           ) : orders && orders.length === 0 ? (
             <EmptyState
-              icon="🧾"
               title="No orders yet"
               hint="Paid purchases appear here as they flow through checkout."
             />
@@ -1229,7 +1192,6 @@ export default function AdminPage() {
             <ErrorPanel message={payoutsQ.error} onRetry={payoutsQ.reload} />
           ) : payouts && payouts.length === 0 ? (
             <EmptyState
-              icon="💸"
               title="No payouts requested"
               hint="Creator withdrawals land here once your balance clears the minimum payout."
             />
@@ -1352,13 +1314,12 @@ export default function AdminPage() {
           ) : reports && openReports.length === 0 ? (
             <>
               <EmptyState
-                icon="🚩"
                 title="No open reports"
                 hint="Buyer-submitted reports land here for triage."
               />
               {resolvedReports.length > 0 && (
                 <div className="mt-6 space-y-1.5">
-                  <h3 className="text-xs font-medium uppercase text-muted-foreground">Resolved</h3>
+                  <h3 className="text-xs font-medium text-muted-foreground">Resolved</h3>
                   {resolvedReports.slice(0, 20).map((r) => (
                     <div
                       key={r.id}
@@ -1381,7 +1342,7 @@ export default function AdminPage() {
                   <p className="font-medium">Report #{r.id} · agent {r.agent_id}</p>
                   <p className="mt-1">{r.reason}</p>
                   {r.details && <p className="mt-1 text-xs text-muted-foreground">{r.details}</p>}
-                  <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                  <p className="mt-1 text-[11px] text-muted-foreground">
                     {fmtDate(r.created_at)}
                   </p>
                   <div className="mt-2.5 flex gap-1.5">
@@ -1410,7 +1371,7 @@ export default function AdminPage() {
               ))}
               {resolvedReports.length > 0 && (
                 <div className="space-y-1.5 pt-4">
-                  <h3 className="text-xs font-medium uppercase text-muted-foreground">Resolved</h3>
+                  <h3 className="text-xs font-medium text-muted-foreground">Resolved</h3>
                   {resolvedReports.slice(0, 20).map((r) => (
                     <div
                       key={r.id}
@@ -1449,7 +1410,6 @@ export default function AdminPage() {
             <ErrorPanel message={auditQ.error} onRetry={auditQ.reload} />
           ) : audit && audit.length === 0 ? (
             <EmptyState
-              icon="📜"
               title="No audit entries"
               hint="Every operator action lands here with actor, entity and details."
             />

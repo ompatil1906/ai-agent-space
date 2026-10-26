@@ -10,10 +10,7 @@ import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Reveal } from "@/components/reveal";
@@ -74,18 +71,14 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="relative flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center px-6 py-16">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[360px] bg-[radial-gradient(50%_100%_at_50%_0%,color-mix(in_oklab,var(--brand)_8%,transparent),transparent_70%)]"
-      />
-      <div className="relative w-full max-w-sm">
+    <div className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center px-6 py-16">
+      <div className="w-full max-w-sm">
         <Reveal>
           <div className="mb-6 flex flex-col items-center gap-3 text-center">
             <Link
               href="/"
               aria-label="AI Agent Space home"
-              className="flex size-12 items-center justify-center rounded-2xl bg-card p-2 shadow-md ring-1 ring-foreground/10 transition-all hover:scale-105 hover:ring-foreground/25"
+              className="flex size-12 items-center justify-center rounded-2xl bg-card p-2 shadow-sm ring-1 ring-foreground/10 transition-colors hover:ring-foreground/25"
             >
               <Image
                 src="/logos/icon.svg"
@@ -100,8 +93,8 @@ export default function RegisterPage() {
               <h1 className="text-xl font-medium tracking-tight">
                 Create your workspace
               </h1>
-              <p className="mt-1 font-mono text-xs text-muted-foreground">
-                start building agents in minutes
+              <p className="mt-1 text-sm text-muted-foreground">
+                Start building agents in minutes
               </p>
             </div>
           </div>
@@ -109,12 +102,6 @@ export default function RegisterPage() {
 
         <Reveal delay={0.05}>
           <Card>
-            <CardHeader>
-              <CardTitle>Create Account</CardTitle>
-              <CardDescription>
-                One account for every agent, marketplace and key.
-              </CardDescription>
-            </CardHeader>
             <CardContent>
               <form onSubmit={handleRegister} className="space-y-4">
                 <div className="space-y-1.5">
@@ -199,7 +186,7 @@ export default function RegisterPage() {
                 </Alert>
               )}
             </CardContent>
-            <CardFooter className="justify-between gap-2">
+            <CardFooter className="justify-between gap-2 border-t-0 bg-transparent">
               <p className="text-sm text-muted-foreground">Already registered?</p>
               <Button variant="outline" size="sm" render={<Link href="/login" />}>
                 Log in

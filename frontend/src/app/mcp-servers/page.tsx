@@ -62,7 +62,6 @@ import {
   RadarIcon,
   RefreshCwIcon,
   SearchIcon,
-  ServerIcon,
   ShieldCheckIcon,
   Trash2Icon,
   UploadIcon,
@@ -581,9 +580,8 @@ export default function MCPServersPage() {
   const healthyCount = serversList.filter((s) => s.last_status === "healthy").length;
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
       <PageHeader
-        eyebrow="model context protocol"
         title="Tool Connections"
         description="Give your agents superpowers: connect popular tools in one click, or register your own server. Each connection is tested before it's added, and every agent can reuse it."
       >
@@ -761,8 +759,8 @@ export default function MCPServersPage() {
               )}
 
               <div className="space-y-2 rounded-lg bg-muted/40 p-3 ring-1 ring-foreground/10">
-                <p className="font-mono text-[11px] text-muted-foreground uppercase">
-                  environment secrets {picked?.requiredEnv?.length ? `(required by ${picked.name})` : "(optional)"}
+                <p className="text-xs font-medium text-muted-foreground">
+                  Environment secrets {picked?.requiredEnv?.length ? `(required by ${picked.name})` : "(optional)"}
                 </p>
                 {envRows.map((row, idx) => {
                   const locked = Boolean(
@@ -814,13 +812,13 @@ export default function MCPServersPage() {
                 <div>
                   {draftTesting ? (
                     <div className="rounded-lg bg-muted/40 px-2.5 py-2 ring-1 ring-foreground/10">
-                      <p className="animate-pulse font-mono text-[11px] text-muted-foreground">
+                      <p className="animate-pulse text-[11px] text-muted-foreground">
                         connecting & listing tools…
                       </p>
                     </div>
                   ) : draftVerified ? (
                     <div className="rounded-lg bg-success/10 px-2.5 py-2 ring-1 ring-success/25">
-                      <p className="font-mono text-[11px] text-success">
+                      <p className="text-[11px] text-success">
                         ✓ verified — {draftTest.tool_count} tool{draftTest.tool_count === 1 ? "" : "s"}{" "}
                         reachable. You can connect now.
                       </p>
@@ -844,7 +842,7 @@ export default function MCPServersPage() {
                     </div>
                   ) : (
                     <div className="rounded-lg bg-destructive/10 px-2.5 py-2 ring-1 ring-destructive/25">
-                      <p className="break-words font-mono text-[11px] text-destructive">
+                      <p className="break-words text-[11px] text-destructive">
                         ✗ {draftTest.error || "connection failed"} — fix the config and test again
                       </p>
                     </div>
@@ -853,8 +851,8 @@ export default function MCPServersPage() {
               )}
 
               {requiredEnvMissing && !draftVerified && (
-                <p className="font-mono text-xs text-warning">
-                  enter all required secrets for {picked?.name} to enable testing
+                <p className="text-xs text-warning">
+                  Enter all required secrets for {picked?.name} to enable testing.
                 </p>
               )}
 
@@ -889,19 +887,17 @@ export default function MCPServersPage() {
 
       {/* stat chips — registered / healthy / in use by agents */}
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <StatChip label="connections registered" value={serverCount} />
+        <StatChip label="registered" value={serverCount} />
         <StatChip label="healthy" value={healthyCount} tone="success" />
         <StatChip label="in use by agents" value={connectedAgents.size} tone="brand" />
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(((v ?? "catalog") as Tab))}>
         <TabsList className="mb-5">
-          <TabsTrigger value="catalog">
-            <LayoutGridIcon className="size-3.5" /> Catalog
-          </TabsTrigger>
+          <TabsTrigger value="catalog">Catalog</TabsTrigger>
           <TabsTrigger value="servers">
-            <ServerIcon className="size-3.5" /> My servers
-            <span className="font-mono text-[10px] text-muted-foreground">{serverCount}</span>
+            My servers
+            <span className="text-[10px] text-muted-foreground">{serverCount}</span>
           </TabsTrigger>
         </TabsList>
 
@@ -935,7 +931,7 @@ export default function MCPServersPage() {
                   type="button"
                   onClick={() => setCategory(c)}
                   className={cn(
-                    "rounded-md px-2.5 py-1 font-mono text-xs transition-colors",
+                    "rounded-md px-2.5 py-1 text-xs transition-colors",
                     category === c
                       ? "bg-foreground text-background"
                       : "text-muted-foreground hover:bg-muted"
@@ -953,7 +949,7 @@ export default function MCPServersPage() {
               return (
                 <Card
                   key={entry.slug}
-                  className="flex flex-col transition-all hover:-translate-y-0.5 hover:ring-foreground/20"
+                  className="flex flex-col transition-all hover:ring-foreground/20"
                 >
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-sm font-medium tracking-tight">
@@ -964,18 +960,18 @@ export default function MCPServersPage() {
                       {connected && (
                         <span
                           title="Already in your registry"
-                          className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 font-mono text-[10px] text-success"
+                          className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] text-success"
                         >
                           <span className="size-1.5 rounded-full bg-success" /> connected
                         </span>
                       )}
-                      {entry.official && <Badge variant="outline" className="font-mono">official</Badge>}
+                      {entry.official && <Badge variant="outline">official</Badge>}
                     </CardAction>
                     <CardDescription className="flex flex-wrap gap-1.5">
                       <Badge variant="secondary" className="font-mono text-[10px]">{entry.transport}</Badge>
-                      <Badge variant="secondary" className="font-mono text-[10px]">{entry.category}</Badge>
+                      <Badge variant="secondary" className="text-[10px]">{entry.category}</Badge>
                       {entry.requiresAuth && (
-                        <Badge className="border-transparent bg-warning/10 font-mono text-[10px] text-warning">
+                        <Badge className="border-transparent bg-warning/10 text-[10px] text-warning">
                           auth
                         </Badge>
                       )}
@@ -1111,7 +1107,7 @@ export default function MCPServersPage() {
                 return (
                   <Card
                     key={s.id}
-                    className="flex flex-col transition-all hover:-translate-y-0.5 hover:ring-foreground/20"
+                    className="flex flex-col transition-all hover:ring-foreground/20"
                   >
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-sm font-medium tracking-tight">
@@ -1122,13 +1118,13 @@ export default function MCPServersPage() {
                         {connectedAgents.has(s.id) && (
                           <span
                             title="In use by at least one agent"
-                            className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 font-mono text-[10px] text-brand ring-1 ring-brand/20"
+                            className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[10px] text-brand ring-1 ring-brand/20"
                           >
                             in use
                           </span>
                         )}
                         {toolCount > 0 && (
-                          <Badge variant="outline" className="font-mono">
+                          <Badge variant="outline">
                             {toolCount} tool{toolCount === 1 ? "" : "s"}
                           </Badge>
                         )}
@@ -1138,7 +1134,7 @@ export default function MCPServersPage() {
                         <span
                           title={`${s.last_status || "never tested"}${s.last_checked_at ? ` · ${new Date(s.last_checked_at).toLocaleString()}` : ""}`}
                           className={cn(
-                            "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px]",
+                            "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px]",
                             pill.pill
                           )}
                         >
@@ -1146,8 +1142,8 @@ export default function MCPServersPage() {
                           {pill.label}
                         </span>
                       </CardAction>
-                      <CardDescription className="space-y-0.5 font-mono text-[11px]">
-                        <span className="block truncate" title={configSummary(s)}>
+                      <CardDescription className="space-y-0.5 text-[11px]">
+                        <span className="block truncate font-mono" title={configSummary(s)}>
                           {configSummary(s) || "—"}
                         </span>
                         {s.last_checked_at && (
@@ -1167,7 +1163,7 @@ export default function MCPServersPage() {
                           const r = testResults[s.id];
                           return r.healthy ? (
                             <div className="rounded-lg bg-success/10 px-2.5 py-1.5 ring-1 ring-success/25">
-                              <p className="font-mono text-[11px] text-success">
+                              <p className="text-[11px] text-success">
                                 ✓ connected — {r.tool_count} tool{r.tool_count === 1 ? "" : "s"}
                               </p>
                               {r.tools && r.tools.length > 0 && (
@@ -1190,7 +1186,7 @@ export default function MCPServersPage() {
                             </div>
                           ) : (
                             <div className="rounded-lg bg-destructive/10 px-2.5 py-1.5 ring-1 ring-destructive/25">
-                              <p className="break-words font-mono text-[11px] text-destructive">
+                              <p className="break-words text-[11px] text-destructive">
                                 ✗ {r.error || "connection failed"}
                               </p>
                             </div>
@@ -1301,8 +1297,8 @@ export default function MCPServersPage() {
           )}
 
           {serverCount > 0 && (
-            <p className="mt-4 font-mono text-xs text-muted-foreground">
-              tip · attach these in any agent builder via “From registry…” — the agent uses your live config
+            <p className="mt-4 text-xs text-muted-foreground">
+              Tip: attach these in any agent builder via “From registry…” — the agent uses your live config
               on every run.
             </p>
           )}
@@ -1379,14 +1375,14 @@ export default function MCPServersPage() {
             if (busy) {
               return (
                 <div className="flex items-center justify-center rounded-lg bg-muted/40 px-3 py-10 ring-1 ring-foreground/10">
-                  <span className="animate-pulse font-mono text-xs text-muted-foreground">discovering…</span>
+                  <span className="animate-pulse text-xs text-muted-foreground">discovering…</span>
                 </div>
               );
             }
             if (r?.error) {
               return (
                 <div className="rounded-lg bg-destructive/10 px-2.5 py-2 ring-1 ring-destructive/25">
-                  <p className="break-words font-mono text-[11px] text-destructive">✗ {r.error}</p>
+                  <p className="break-words text-[11px] text-destructive">✗ {r.error}</p>
                   <Button
                     variant="outline"
                     size="sm"
@@ -1462,10 +1458,10 @@ function StatChip({
         tone === "neutral" && "bg-muted/60 text-muted-foreground ring-foreground/10"
       )}
     >
-      <span className={cn("font-mono text-[11px] font-semibold", tone === "neutral" && "text-foreground")}>
+      <span className={cn("font-semibold", tone === "neutral" && "text-foreground")}>
         {value}
       </span>
-      <span className="truncate uppercase tracking-wide">{label}</span>
+      <span className="truncate">{label}</span>
     </span>
   );
 }
@@ -1483,7 +1479,7 @@ function DiscoverSection({
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <p className="font-mono text-[11px] text-muted-foreground uppercase">
+        <p className="text-xs font-medium text-muted-foreground">
           {label} <span className="text-foreground">({items.length})</span>
         </p>
         {items.length > 0 && (

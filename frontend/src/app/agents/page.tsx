@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { BotIcon, CpuIcon, GlobeIcon, LayersIcon, StoreIcon, Undo2Icon, GitBranchIcon } from "lucide-react";
+import { BotIcon, CpuIcon, GlobeIcon, LayersIcon, Undo2Icon, GitBranchIcon } from "lucide-react";
 import { api, getToken, AUTH_EVENT } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -195,7 +195,7 @@ export default function AgentsPage() {
 
   if (!authed) {
     return (
-      <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+      <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
         <Skeleton className="h-9 w-48" />
         <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -207,14 +207,13 @@ export default function AgentsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
       <PageHeader
-        eyebrow="workspace"
         title="My Agents"
         description="Your digital workers. Open one to chat with it — or hand it a task to run on its own."
       >
         <Button variant="outline" render={<Link href="/marketplace" />}>
-          <StoreIcon className="size-4" /> Marketplace
+          Marketplace
         </Button>
         <Button
           onClick={() => {
@@ -236,7 +235,7 @@ export default function AgentsPage() {
         <div className="mb-8">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-lg font-medium tracking-tight">
-              <span className="text-muted-foreground font-mono text-xs uppercase">editing · </span>
+              <span className="text-xs font-normal text-muted-foreground">Editing · </span>
               {editingAgent.name}
             </h2>
             <Button size="sm" variant="ghost" onClick={() => setEditingAgent(null)}>
@@ -264,7 +263,7 @@ export default function AgentsPage() {
       ) : agents.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {agents.map((agent) => (
-            <Card key={agent.id} className="transition-all hover:-translate-y-0.5 hover:ring-foreground/20">
+            <Card key={agent.id} className="transition-all hover:ring-foreground/20">
               <CardHeader>
                 <div className="flex items-start gap-3">
                   <AgentMonogram agent={{ id: agent.id, name: agent.name, avatar_url: agent.avatar_url }} />
@@ -279,7 +278,7 @@ export default function AgentsPage() {
                     )}
                   </div>
                   <CardAction>
-                    <Badge variant="secondary" className="font-mono text-[10px]">
+                    <Badge variant="secondary" className="text-[10px]">
                       <CpuIcon className="size-3" />
                       {agent.model_name}
                     </Badge>
@@ -292,12 +291,12 @@ export default function AgentsPage() {
                 </p>
                 <div className="text-muted-foreground mb-4 flex flex-wrap items-center gap-1.5">
                   {agent.tools_config && agent.tools_config.length > 0 && (
-                    <Badge variant="outline" className="text-[10px] font-mono">
+                    <Badge variant="outline" className="text-[10px]">
                       {agent.tools_config.length} tool{agent.tools_config.length === 1 ? "" : "s"}
                     </Badge>
                   )}
                   {String(agent.workflow_config?.["type"] ?? "single") !== "single" && (
-                    <Badge variant="outline" className="text-[10px] font-mono">
+                    <Badge variant="outline" className="text-[10px]">
                       <LayersIcon className="size-3" /> team
                     </Badge>
                   )}
@@ -320,24 +319,24 @@ export default function AgentsPage() {
                     {agent.is_published ? "Unpublish" : "Publish…"}
                   </Button>
                 </div>
-                <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-3 font-mono text-[11px]">
+                <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-3 text-[11px]">
                   <Link
                     href={`/agents/${agent.id}/evaluations`}
                     className="flex items-center gap-1 transition-colors hover:text-foreground"
                   >
-                    quality checks
+                    Quality checks
                   </Link>
                   <button
                     className="flex items-center gap-1 transition-colors hover:text-foreground"
                     onClick={() => loadVersions(agent)}
                   >
-                    <GitBranchIcon className="size-3" /> versions
+                    <GitBranchIcon className="size-3" /> Versions
                   </button>
                   <button
                     className="flex items-center gap-1 transition-colors hover:text-foreground"
                     onClick={() => cloneAgent(agent.id)}
                   >
-                    <Undo2Icon className="size-3" /> duplicate
+                    <Undo2Icon className="size-3" /> Duplicate
                   </button>
                 </div>
               </CardContent>
@@ -369,7 +368,7 @@ export default function AgentsPage() {
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-sm font-medium">
                     <span
-                      className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] ring-1 ${
+                      className={`rounded-md px-1.5 py-0.5 text-[10px] ring-1 ${
                         i === 0
                           ? "bg-brand/10 text-brand ring-brand/20"
                           : "bg-muted text-muted-foreground ring-border"
@@ -386,7 +385,7 @@ export default function AgentsPage() {
                       timeStyle: "short",
                     })}
                   </p>
-                  <p className="text-muted-foreground/70 mt-1 line-clamp-2 font-mono text-[11px]">
+                  <p className="text-muted-foreground/70 mt-1 line-clamp-2 text-[11px]">
                     {v.system_prompt.slice(0, 140)}
                   </p>
                 </div>

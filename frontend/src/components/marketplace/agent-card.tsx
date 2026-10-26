@@ -47,7 +47,7 @@ export function AgentCard({ agent, className }: { agent: PublicAgentLike; classN
       href={`/agents/${agent.slug}`}
       className={cn(
         "group/card relative flex flex-col gap-3 overflow-hidden rounded-xl bg-card p-4 ring-1 ring-foreground/10",
-        "transition-all duration-200 hover:-translate-y-0.5 hover:ring-foreground/20",
+        "transition-all duration-200 hover:ring-foreground/20",
         className
       )}
     >
@@ -127,7 +127,10 @@ export function AgentCard({ agent, className }: { agent: PublicAgentLike; classN
   );
 }
 
-/** Deterministic gradient monogram from the agent id/name. */
+/**
+ * Deterministic tinted monogram from the agent id/name — one solid hue per
+ * agent, soft enough to stay quiet next to the accent color.
+ */
 export function AgentMonogram({
   agent,
   size = "md",
@@ -140,11 +143,12 @@ export function AgentMonogram({
   return (
     <span
       aria-hidden
-      className={cn("shrink-0 rounded-lg font-semibold text-white", dims)}
+      className={cn("shrink-0 rounded-lg font-semibold", dims)}
       style={{
         background: agent.avatar_url
           ? undefined
-          : `linear-gradient(135deg, oklch(0.6 0.18 270), oklch(0.55 0.2 ${305 - hue / 40 + hue / 2}))`,
+          : `oklch(0.62 0.11 ${hue})`,
+        color: agent.avatar_url ? undefined : "oklch(0.99 0.002 264)",
       }}
     >
       {agent.avatar_url ? (

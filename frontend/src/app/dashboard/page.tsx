@@ -21,21 +21,12 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Bar, BarChart } from "recharts";
 import {
-  ActivityIcon,
-  BotIcon,
   CheckIcon,
-  CircleDollarSignIcon,
-  CoinsIcon,
   CopyIcon,
-  KeyRoundIcon,
   PlusIcon,
   RefreshCwIcon,
-  SparklesIcon,
-  TimerIcon,
   Trash2Icon,
   TriangleAlertIcon,
-  WalletIcon,
-  type LucideIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -78,56 +69,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EmptyState, PageHeader } from "@/components/ui-page";
+import { EmptyState, PageHeader, StatCard } from "@/components/ui-page";
 import { AgentMonogram } from "@/components/marketplace/agent-card";
 import { api, getToken, messageFromError, useApiQuery } from "@/lib/api";
 import type { ApiKeyCreateResponse, ApiKeyPublic, UserStats } from "@/lib/types";
 import { formatMoney } from "@/lib/money";
 
 /* ------------------------------------------------------------------ shared */
-
-const CHIP_STYLES = {
-  brand: "bg-brand/10 text-brand ring-brand/20",
-  success: "bg-success/10 text-success ring-success/20",
-  warning: "bg-warning/10 text-warning ring-warning/20",
-  neutral: "bg-muted text-muted-foreground ring-foreground/5",
-} as const;
-
-function StatCard({
-  icon: Icon,
-  chip = "neutral",
-  label,
-  value,
-  sub,
-}: {
-  icon: LucideIcon;
-  chip?: keyof typeof CHIP_STYLES;
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2 font-mono text-[10px] font-medium uppercase tracking-widest text-muted-foreground/80">
-          <span className="min-w-0 truncate">{label}</span>
-          <span
-            aria-hidden
-            className={`flex size-6 shrink-0 items-center justify-center rounded-md ring-1 ${CHIP_STYLES[chip]}`}
-          >
-            <Icon className="size-3.5" />
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="font-mono text-2xl leading-none font-medium tracking-tight text-foreground">
-          {value}
-        </p>
-        {sub ? <p className="mt-1.5 text-xs text-muted-foreground">{sub}</p> : null}
-      </CardContent>
-    </Card>
-  );
-}
 
 function RunStatusBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
@@ -264,9 +212,8 @@ export default function DashboardPage() {
   const hasAgentRuns = chartData.some((d) => d.runs > 0);
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
       <PageHeader
-        eyebrow="workspace overview"
         title="Dashboard"
         description="Everything you've built, run, and spent — at a glance."
       >
@@ -295,22 +242,17 @@ export default function DashboardPage() {
             <>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <StatCard
-                  icon={BotIcon}
-                  chip="brand"
-                  label="agents"
+                  label="Agents"
                   value={String(stats.agents_count)}
                   sub={`${stats.published_count} published`}
                 />
                 <StatCard
-                  icon={ActivityIcon}
-                  chip="success"
-                  label="runs"
+                  label="Runs"
                   value={stats.runs_count.toLocaleString()}
                   sub={`${(stats.success_rate * 100).toFixed(0)}% success rate`}
                 />
                 <StatCard
-                  icon={TimerIcon}
-                  label="avg latency"
+                  label="Avg latency"
                   value={
                     stats.avg_latency_ms != null
                       ? `${(stats.avg_latency_ms / 1000).toFixed(1)}s`
@@ -323,22 +265,17 @@ export default function DashboardPage() {
                   }
                 />
                 <StatCard
-                  icon={WalletIcon}
-                  chip="brand"
-                  label="marketplace spend"
+                  label="Marketplace spend"
                   value={formatMoney(stats.spent_minor, stats.currency)}
                   sub={`${stats.purchases_count} orders · ${stats.active_subscriptions} active subscriptions`}
                 />
                 <StatCard
-                  icon={CoinsIcon}
-                  label="tokens"
+                  label="Tokens"
                   value={stats.total_tokens ? stats.total_tokens.toLocaleString() : "0"}
                   sub={`${stats.total_input_tokens.toLocaleString()} in · ${stats.total_output_tokens.toLocaleString()} out`}
                 />
                 <StatCard
-                  icon={CircleDollarSignIcon}
-                  chip="warning"
-                  label="est. cost"
+                  label="Est. cost"
                   value={`$${stats.total_estimated_cost_usd.toFixed(4)}`}
                   sub={
                     stats.avg_cost_per_run != null
@@ -445,11 +382,11 @@ export default function DashboardPage() {
                           <span className="min-w-0 flex-1 truncate text-sm font-medium">
                             {agent.name}
                           </span>
-                          <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                          <span className="shrink-0 text-xs text-muted-foreground">
                             {agent.run_count} run{agent.run_count === 1 ? "" : "s"}
                           </span>
                           {agent.is_published ? (
-                            <Badge variant="secondary" className="shrink-0 font-mono text-[10px]">
+                            <Badge variant="secondary" className="shrink-0 text-[10px]">
                               listed
                             </Badge>
                           ) : (
@@ -467,18 +404,10 @@ export default function DashboardPage() {
               {stats.evaluations_count > 0 && (
                 <Card size="sm">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2.5 text-sm">
-                      <span
-                        aria-hidden
-                        className="flex size-6 items-center justify-center rounded-md bg-success/10 text-success ring-1 ring-success/20"
-                      >
-                        <SparklesIcon className="size-3.5" />
-                      </span>
-                      Evaluation quality
-                    </CardTitle>
+                    <CardTitle>Evaluation quality</CardTitle>
                   </CardHeader>
                   <CardContent className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <span className="font-mono text-2xl leading-none font-medium">
+                    <span className="text-2xl leading-none font-medium tracking-tight">
                       {stats.avg_evaluation_score != null
                         ? stats.avg_evaluation_score.toFixed(1)
                         : "—"}
@@ -563,7 +492,7 @@ export default function DashboardPage() {
                         <TableCell>
                           <Link
                             href={`/agents/${run.agent_id}`}
-                            className="font-mono text-xs text-muted-foreground hover:text-foreground hover:underline"
+                            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
                           >
                             agent #{run.agent_id}
                           </Link>
@@ -668,10 +597,7 @@ function ApiKeysPanel() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <KeyRoundIcon className="size-4 text-muted-foreground" />
-          API keys
-        </CardTitle>
+        <CardTitle>API keys</CardTitle>
         <CardDescription>Run your agents from scripts, bots, and apps.</CardDescription>
         <CardAction>
           <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -728,7 +654,7 @@ function ApiKeysPanel() {
             </div>
           ))
         )}
-        <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+        <p className="mt-1 text-[11px] text-muted-foreground">
           Use as <code className="text-foreground">Authorization: Bearer ask_…</code> to run agents
           programmatically.
         </p>

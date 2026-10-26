@@ -128,7 +128,7 @@ function ScoreChip({ score, className }: { score: number; className?: string }) 
   return (
     <span
       className={cn(
-        "inline-flex h-6 shrink-0 items-center rounded-4xl px-2.5 font-mono text-xs font-medium ring-1",
+        "inline-flex h-6 shrink-0 items-center rounded-4xl px-2.5 text-xs font-medium ring-1",
         scoreBand(score),
         className
       )}
@@ -171,7 +171,7 @@ function CriterionBars({ averages }: { averages: CriterionAverage[] }) {
     <div className="space-y-2">
       {averages.map((c) => (
         <div key={c.name} className="flex items-center gap-3">
-          <span className="w-28 min-w-0 shrink-0 truncate font-mono text-xs text-muted-foreground">
+          <span className="w-28 min-w-0 shrink-0 truncate text-xs text-muted-foreground">
             {c.name}
           </span>
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
@@ -182,7 +182,7 @@ function CriterionBars({ averages }: { averages: CriterionAverage[] }) {
               }}
             />
           </div>
-          <span className="w-10 shrink-0 text-right font-mono text-xs font-medium">
+          <span className="w-10 shrink-0 text-right text-xs font-medium">
             {fmtScore(c.avg)}
           </span>
         </div>
@@ -300,7 +300,7 @@ function EvaluationsContent() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-12">
       {/* breadcrumbs — back to the agent list + into the agent console */}
       <nav
         aria-label="Breadcrumb"
@@ -318,7 +318,6 @@ function EvaluationsContent() {
       </nav>
 
       <PageHeader
-        eyebrow={`agent · ${agentName} · llm-as-judge`}
         title="Evaluation dashboard"
         description="Test how well the agent answers, then let a judge model score each response from 1–10."
       >
@@ -357,19 +356,17 @@ function EvaluationsContent() {
           <div className="rounded-xl bg-card px-5 py-5 ring-1 ring-foreground/10">
             <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-6">
               <div>
-                <p className="font-mono text-[10px] tracking-widest text-muted-foreground/70 uppercase">
-                  average score
-                </p>
+                <p className="text-xs text-muted-foreground">Average score</p>
                 <div className="mt-1 flex items-baseline gap-2">
                   <span className="text-4xl font-medium tracking-tight">
                     {fmtScore(summary?.average_score)}
                   </span>
-                  <span className="font-mono text-sm text-muted-foreground">/ 10</span>
+                  <span className="text-sm text-muted-foreground">/ 10</span>
                   {typeof summary?.average_score === "number" && (
                     <ScoreChip score={summary.average_score} />
                   )}
                 </div>
-                <p className="text-muted-foreground mt-1 font-mono text-xs">
+                <p className="text-muted-foreground mt-1 text-xs">
                   {countNumber} evaluation{countNumber === 1 ? "" : "s"} recorded
                 </p>
                 {judgeCriteria.length > 0 && (
@@ -386,9 +383,7 @@ function EvaluationsContent() {
                 )}
               </div>
               <div className="min-w-56 max-w-md flex-1">
-                <p className="mb-2 font-mono text-[10px] tracking-widest text-muted-foreground/70 uppercase">
-                  per-criterion average
-                </p>
+                <p className="mb-2 text-xs text-muted-foreground">Per-criterion average</p>
                 {criterionAverages.length > 0 ? (
                   <CriterionBars averages={criterionAverages} />
                 ) : (
@@ -404,8 +399,8 @@ function EvaluationsContent() {
           {/* ------------------------------------------------ history */}
           <div className="mt-8">
             <div className="mb-3 flex items-baseline justify-between gap-3">
-              <p className="font-mono text-[11px] tracking-widest text-muted-foreground/70 uppercase">
-                history · last 30
+              <p className="text-sm font-medium text-muted-foreground">
+                History <span className="text-xs font-normal">· last 30</span>
               </p>
               <Button
                 variant="ghost"
@@ -446,7 +441,7 @@ function EvaluationsContent() {
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <span
-                          className="hidden font-mono text-[11px] text-muted-foreground sm:inline"
+                          className="hidden text-[11px] text-muted-foreground sm:inline"
                           title={fullDate(ev.created_at)}
                         >
                           {timeAgo(ev.created_at)}
@@ -527,7 +522,7 @@ function EvaluationsContent() {
                 >
                   {(Math.round(result.score * 10) / 10).toFixed(1)}
                 </span>
-                <span className="font-mono text-sm text-muted-foreground">/ 10</span>
+                <span className="text-sm text-muted-foreground">/ 10</span>
                 <ScoreChip score={result.score} />
               </div>
               {result.explanation && (
@@ -536,8 +531,8 @@ function EvaluationsContent() {
               <CriterionBars averages={aggregateCriterionMap(result.criteria_scores)} />
               {result.agent_output && (
                 <div>
-                  <p className="mb-1.5 font-mono text-[10px] tracking-widest text-muted-foreground/70 uppercase">
-                    agent output
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                    Agent output
                   </p>
                   <ScrollArea className="h-32 rounded-lg bg-muted/40 ring-1 ring-foreground/10">
                     <div className="p-3">
@@ -580,15 +575,15 @@ function EvaluationsContent() {
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <ScoreChip score={Number(detail.score)} />
-                <span className="font-mono text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {readCriteria(detail).count > 0
                     ? `${readCriteria(detail).count} criterion tracked`
                     : null}
                 </span>
               </div>
               <div>
-                <p className="mb-1.5 font-mono text-[10px] tracking-widest text-muted-foreground/70 uppercase">
-                  input
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  Input
                 </p>
                 <p className="rounded-lg bg-muted/40 p-3 text-sm ring-1 ring-foreground/10">
                   {detail.input}
@@ -596,8 +591,8 @@ function EvaluationsContent() {
               </div>
               {detail.agent_output && (
                 <div>
-                  <p className="mb-1.5 font-mono text-[10px] tracking-widest text-muted-foreground/70 uppercase">
-                    agent output
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                    Agent output
                   </p>
                   <ScrollArea className="max-h-40 rounded-lg bg-muted/40 ring-1 ring-foreground/10">
                     <div className="p-3">
@@ -610,8 +605,8 @@ function EvaluationsContent() {
               )}
               {detail.explanation && (
                 <div>
-                  <p className="mb-1.5 font-mono text-[10px] tracking-widest text-muted-foreground/70 uppercase">
-                    explanation
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                    Explanation
                   </p>
                   <p className="text-sm text-muted-foreground">{detail.explanation}</p>
                 </div>
@@ -620,7 +615,7 @@ function EvaluationsContent() {
               {criteriaNames(detail.criteria).length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {criteriaNames(detail.criteria).map((name) => (
-                    <Badge key={name} variant="outline" className="font-mono text-[10px]">
+                    <Badge key={name} variant="outline" className="text-[10px]">
                       {name}
                     </Badge>
                   ))}
@@ -669,7 +664,7 @@ export default function EvaluationsPage() {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
+        <div className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-12">
           <div className="space-y-3">
             <Skeleton className="h-40 w-full rounded-xl" />
             {Array.from({ length: 3 }).map((_, i) => (

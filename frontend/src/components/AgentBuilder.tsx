@@ -5,6 +5,7 @@ import { dump as yamlDump, load as yamlLoad } from "js-yaml";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -666,11 +667,11 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="font-mono text-xs text-muted-foreground uppercase">Name</label>
+                  <Label>Name</Label>
                   <Input value={name} onChange={(e) => setName(e.target.value)} required />
                 </div>
                 <div>
-                  <label className="font-mono text-xs text-muted-foreground uppercase">Model</label>
+                  <Label>Model</Label>
                   <Select
                     value={MODEL_PRESETS.some((m) => m.value === modelName) ? modelName : "custom"}
                     onValueChange={(v) => setModelName(v ? (v === "custom" ? "" : v) : "")}
@@ -700,17 +701,17 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 </div>
               </div>
               <div>
-                <label className="font-mono text-xs text-muted-foreground uppercase">Description</label>
+                <Label>Description</Label>
                 <Input value={description} onChange={(e) => setDescription(e.target.value)} />
               </div>
               <div>
-                <label className="font-mono text-xs text-muted-foreground uppercase">System Prompt</label>
+                <Label>System Prompt</Label>
                 <Textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} rows={4} />
               </div>
               <div>
-                <label className="font-mono text-xs text-muted-foreground uppercase">
+                <Label>
                   Temperature: <span className="text-foreground">{temperature}</span>
-                </label>
+                </Label>
                 <input
                   type="range"
                   min="0"
@@ -753,7 +754,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                   <div className="space-y-3 border-t border-border p-4">
                     <div className="grid gap-4 sm:grid-cols-3">
                       <div>
-                        <label className="font-mono text-xs text-muted-foreground uppercase">Max Steps</label>
+                        <Label>Max Steps</Label>
                         <Input
                           type="number"
                           min={3}
@@ -763,7 +764,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                         />
                       </div>
                       <div>
-                        <label className="font-mono text-xs text-muted-foreground uppercase">Autonomy Level</label>
+                        <Label>Autonomy Level</Label>
                         <Select
                           value={autonomyLevel}
                           items={[
@@ -784,7 +785,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                         </Select>
                       </div>
                       <div>
-                        <label className="font-mono text-xs text-muted-foreground uppercase">Max Reflections</label>
+                        <Label>Max Reflections</Label>
                         <Input
                           type="number"
                           min={0}
@@ -797,7 +798,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
                       <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" checked={sandboxEnabled} onChange={(e) => setSandboxEnabled(e.target.checked)} />
-                        <span className="font-mono text-xs">sandbox: code, terminal &amp; files (Docker-isolated)</span>
+                        <span className="text-xs">Sandbox — code, terminal &amp; files (Docker-isolated)</span>
                       </label>
                       <div className="w-full mt-2 border-t pt-3">
                         <p className="text-sm font-medium mb-1">Agent-as-Tool</p>
@@ -834,15 +835,15 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                       </div>
                       <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" checked={planningEnabled} onChange={(e) => setPlanningEnabled(e.target.checked)} />
-                        <span className="font-mono text-xs">planning: long-horizon plan → act → verify</span>
+                        <span className="text-xs">Planning — long-horizon plan → act → verify</span>
                       </label>
                       <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" checked={reflectEnabled} onChange={(e) => setReflectEnabled(e.target.checked)} />
-                        <span className="font-mono text-xs">self-reflection with confidence + escalation</span>
+                        <span className="text-xs">Self-reflection with confidence + escalation</span>
                       </label>
                       <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" checked={structuredEnabled} onChange={(e) => setStructuredEnabled(e.target.checked)} />
-                        <span className="font-mono text-xs">structured output (JSON Schema enforced)</span>
+                        <span className="text-xs">Structured output (JSON Schema enforced)</span>
                       </label>
                       {structuredEnabled && (
                         <div className="ml-6 space-y-1">
@@ -936,7 +937,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
               </div>
 
               <div>
-                <label className="font-mono text-xs text-muted-foreground uppercase">Workflow Type</label>
+                <Label>Workflow Type</Label>
                 <Select value={workflowType} onValueChange={(v: any) => setWorkflowType(v)}>
                   <SelectTrigger>
                     <SelectValue />
@@ -962,7 +963,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
               {workflowType !== "single" && (
                 <div className="space-y-4 rounded-lg border border-border p-4">
                   <div className="flex justify-between items-center">
-                    <h3 className="font-mono text-sm text-muted-foreground uppercase">
+                    <h3 className="text-sm font-medium">
                       {workflowType === "hierarchical" ? "Teams (Manager → Teams)" : (workflowType === "map_reduce" || workflowType === "ensemble") ? "Specialists (Parallel)" : workflowType === "group_chat" ? "Participants (Group Chat)" : "Sub-Agents / Workers"}
                     </h3>
                     <Button type="button" size="sm" variant="outline" onClick={addSubAgent}>
@@ -972,7 +973,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                   {subAgents.map((sa, i) => (
                     <div key={i} className="space-y-2 rounded-lg border border-border p-3">
                       <div className="flex justify-between">
-                        <Badge variant="secondary" className="font-mono">{workflowType === "hierarchical" ? `Team ${i + 1}` : `Sub-Agent ${i + 1}`}</Badge>
+                        <Badge variant="secondary">{workflowType === "hierarchical" ? `Team ${i + 1}` : `Sub-Agent ${i + 1}`}</Badge>
                         <Button type="button" size="sm" variant="ghost" onClick={() => removeSubAgent(i)}>
                           Remove
                         </Button>
@@ -996,7 +997,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                       {workflowType === "hierarchical" && (
                         <div className="mt-3 space-y-3 rounded border border-dashed border-border p-3 bg-muted/30">
                           <div className="flex items-center gap-2">
-                            <label className="font-mono text-xs text-muted-foreground uppercase whitespace-nowrap">Team Workflow</label>
+                            <Label className="whitespace-nowrap">Team Workflow</Label>
                             <Select
                               value={sa.team_workflow_type || "supervisor"}
                               onValueChange={(v: any) => updateSubAgent(i, { team_workflow_type: v })}
@@ -1013,7 +1014,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                             </Select>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="font-mono text-xs text-muted-foreground uppercase">Team Specialists</span>
+                            <span className="text-xs font-medium">Team Specialists</span>
                             <Button type="button" size="sm" variant="outline" onClick={() => addSpecialist(i)}>
                               Add Specialist
                             </Button>
@@ -1021,7 +1022,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                           {(sa.specialists || []).map((sp, j) => (
                             <div key={j} className="space-y-1 rounded border border-border/60 p-2 bg-background">
                               <div className="flex justify-between items-center">
-                                <Badge variant="outline" className="text-xs font-mono">Specialist {j + 1}</Badge>
+                                <Badge variant="outline">Specialist {j + 1}</Badge>
                                 <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={() => removeSpecialist(i, j)}>
                                   ×
                                 </Button>
@@ -1059,7 +1060,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
 
               <div className="space-y-2 rounded-lg border border-border p-4">
                 <div className="flex justify-between items-center">
-                  <h3 className="font-mono text-sm text-muted-foreground uppercase">mcp tools</h3>
+                  <h3 className="text-sm font-medium">MCP tools</h3>
                   <div className="flex gap-2">
                     <Button type="button" size="sm" variant="outline" onClick={validateTools} disabled={validating || tools.length === 0}>
                       {validating ? "Validating..." : "Validate Configs"}
@@ -1099,7 +1100,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 </div>
                 {validationResult && (
                   <div className="mt-3 rounded-lg border border-border p-3 text-sm">
-                    <strong className="font-mono text-xs text-muted-foreground uppercase">Validation</strong>{" "}
+                    <strong className="text-xs font-medium">Validation</strong>{" "}
                     {validationResult.error ? (
                       <span className="text-destructive">{validationResult.error}</span>
                     ) : validationResult.all_valid ? (
@@ -1160,9 +1161,9 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                     <div key={i} className="space-y-2 rounded-lg border border-border p-3">
                       <div className="flex justify-between">
                         {isRef ? (
-                          <Badge variant="secondary" className="font-mono">Tool {i + 1} · connected</Badge>
+                          <Badge variant="secondary">Tool {i + 1} · Connected</Badge>
                         ) : (
-                          <Badge variant="secondary" className="font-mono">Tool {i + 1}</Badge>
+                          <Badge variant="secondary">Tool {i + 1}</Badge>
                         )}
                         <Button type="button" size="sm" variant="ghost" onClick={() => removeTool(i)}>
                           Remove
@@ -1173,7 +1174,7 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                           <McpLogo slug={(tool as any).logo} name={tool.name} size={28} />
                           <div>
                             <Input value={tool.name} disabled className="font-mono text-xs h-8" />
-                            <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                            <p className="mt-1 text-xs text-muted-foreground">
                               registered connection ({tool.transport}) · config resolved fresh at run time ·
                               {" "}
                               <a href="/mcp-servers" className="underline underline-offset-2">manage</a>
@@ -1241,8 +1242,8 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
 
           <TabsContent value="yaml">
             <div className="space-y-3">
-              <p className="font-mono text-xs text-muted-foreground">
-                edit the full agent definition as yaml, then apply to the visual form before saving
+              <p className="text-xs text-muted-foreground">
+                Edit the full agent definition as YAML, then apply to the visual form before saving
               </p>
               <Textarea
                 value={yamlText}

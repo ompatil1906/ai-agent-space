@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   CircleAlertIcon,
   CopyIcon,
-  InfoIcon,
   Loader2Icon,
   Trash2Icon,
 } from "lucide-react";
@@ -44,7 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState, PageHeader, StatBlock } from "@/components/ui-page";
+import { EmptyState, PageHeader } from "@/components/ui-page";
 import { api, getToken, messageFromError } from "@/lib/api";
 
 interface ProviderKey {
@@ -160,34 +159,13 @@ export default function SettingsPage() {
   };
 
   const activeMeta = providerMeta(provider);
-  const distinctProviders = new Set(keys.map((k) => k.provider)).size;
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6 sm:py-12">
       <PageHeader
-        eyebrow="account"
         title="Settings"
-        description="Your API keys for your agents. Everything already runs on the platform's Gemini key — add your own OpenAI, Anthropic, or local keys here and yours take priority."
+        description="Every model runs on the platform's included Gemini key by default. Add your own provider keys below — yours take priority."
       />
-
-      {/* ------------------------------------------------------- info banner */}
-      <Alert className="border-info/30 bg-info/10 [&>svg]:text-info">
-        <InfoIcon />
-        <AlertTitle>Platform default active — Google Gemini</AlertTitle>
-        <AlertDescription>
-          Every model family (GPT, Claude, Gemini) runs through the included
-          platform key automatically. Add your own keys below to override per
-          provider.
-        </AlertDescription>
-      </Alert>
-
-      {/* --------------------------------------------------------- stat row */}
-      <div className="my-6 grid gap-3 sm:grid-cols-4">
-        <StatBlock label="Saved keys" value={keys.length} />
-        <StatBlock label="Installed providers" value={distinctProviders} />
-        <StatBlock label="Default model" value="gemini-2.5-flash" />
-        <StatBlock label="Embeddings" value="gemini" />
-      </div>
 
       {loadError && (
         <Alert variant="destructive" className="mb-6">
@@ -325,7 +303,6 @@ export default function SettingsPage() {
             </div>
           ) : keys.length === 0 ? (
             <EmptyState
-              icon="✦"
               title="No personal keys yet"
               hint="All your agents currently run on the platform Gemini default. Save a key above to override a provider."
               actionLabel="Build an agent"
@@ -351,7 +328,7 @@ export default function SettingsPage() {
                         <span className="truncate font-medium">{name}</span>
                         <Badge
                           variant="secondary"
-                          className="rounded-full font-mono text-[10px] uppercase"
+                          className="rounded-full text-[10px]"
                         >
                           {k.provider}
                         </Badge>

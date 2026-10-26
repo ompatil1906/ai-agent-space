@@ -326,8 +326,8 @@ export default function CheckoutDialog({
             </div>
           )}
           {isPaid && pricing && (
-            <p className="font-mono text-[10px] text-muted-foreground">
-              amount charged: {formatMoney(pricing.amount_minor, pricing.currency)} ·{" "}
+            <p className="text-xs text-muted-foreground">
+              Amount charged: {formatMoney(pricing.amount_minor, pricing.currency)} ·{" "}
               {planDescriptor(pricing).toLowerCase()}
             </p>
           )}
@@ -360,9 +360,7 @@ export default function CheckoutDialog({
 
           {providerMode === "test" && (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant="outline" className="font-mono text-[10px] uppercase">
-                TEST MODE
-              </Badge>
+              <Badge variant="outline">Test mode</Badge>
               Live keys are not configured — checkout runs in the provider sandbox. No real charges.
             </p>
           )}

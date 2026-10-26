@@ -123,10 +123,7 @@ export default function AgentTasksPanel({
     <div className="space-y-5">
       {/* Composer */}
       <div className="rounded-lg border border-brand/30 bg-brand/5 p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <span aria-hidden className="font-mono text-sm">⚡</span>
-          <p className="text-sm font-medium">Direct automation — hand off a task, unattended</p>
-        </div>
+        <p className="text-sm font-medium">Direct automation — hand off a task, unattended</p>
         <Input
           placeholder="Task title (optional, e.g. “Audit dependency risk”)"
           value={title}
@@ -171,17 +168,17 @@ export default function AgentTasksPanel({
                     {t.estimated_cost_usd ? ` · $${t.estimated_cost_usd.toFixed(4)}` : ""}
                   </span>
                 </span>
-                <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] ${pill.cls}`}>
+                <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] ${pill.cls}`}>
                   {pill.label}
                 </span>
               </button>
 
               {isOpen && (
                 <div className="space-y-2 border-t border-border px-3 py-3">
-                  <p className="font-mono text-[11px] text-muted-foreground line-clamp-3">▶ goal: {t.input}</p>
+                  <p className="text-[11px] text-muted-foreground line-clamp-3">Goal: {t.input}</p>
                   {t.status === "running" && (
-                    <p className="font-mono text-[11px] text-warning">
-                      ▸ working autonomously — steps, tool calls and verification happen in the background…
+                    <p className="text-[11px] text-warning">
+                      Working autonomously — steps, tool calls and verification happen in the background…
                     </p>
                   )}
                   {t.error && (
@@ -215,8 +212,8 @@ export default function AgentTasksPanel({
         })}
       </div>
       {tasks.length > 0 && (
-        <p className="font-mono text-[10px] text-muted-foreground">
-          tasks run unattended · isolated session thread · “open as chat” replays it in Agent Chat
+        <p className="text-xs text-muted-foreground">
+          Tasks run unattended · isolated session thread · “open as chat” replays it in Agent Chat
         </p>
       )}
     </div>

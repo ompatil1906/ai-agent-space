@@ -31,7 +31,7 @@ import type { PublicAgent, CategoryPublic } from "@/lib/types";
 import { pricingLabel } from "@/lib/money";
 import { PageHeader } from "@/components/ui-page";
 import { AgentCard } from "@/components/marketplace/agent-card";
-import { SearchIcon, StarIcon, XIcon, LayoutGridIcon, Rows3Icon, TrophyIcon, SlidersHorizontalIcon } from "lucide-react";
+import { SearchIcon, StarIcon, XIcon, LayoutGridIcon, Rows3Icon, SlidersHorizontalIcon } from "lucide-react";
 
 const PRICING_FILTERS = [
   { value: "", label: "All pricing" },
@@ -303,9 +303,8 @@ function MarketplaceInner() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
       <PageHeader
-        eyebrow="buy · sell · build on agents"
         title="Agent Marketplace"
         description="Real agents, real payments. Get a proven specialist for your workspace in one click — or publish yours and earn when others use it."
       >
@@ -318,12 +317,8 @@ function MarketplaceInner() {
 
       <Tabs value={view} onValueChange={(v) => setView(v as "browse" | "leaderboard")}>
         <TabsList className="mb-6">
-          <TabsTrigger value="browse">
-            <SearchIcon className="size-3.5" /> Browse
-          </TabsTrigger>
-          <TabsTrigger value="leaderboard">
-            <TrophyIcon className="size-3.5" /> Leaderboard
-          </TabsTrigger>
+          <TabsTrigger value="browse">Browse</TabsTrigger>
+          <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -380,7 +375,7 @@ function MarketplaceInner() {
                 />
                 <PopoverContent align="start" className="w-84 gap-4 p-4">
                   <div className="space-y-1.5">
-                    <Label className="text-muted-foreground font-mono text-[11px] uppercase">Sort</Label>
+                    <Label>Sort</Label>
                     <Select
                       value={sortBy}
                       items={SORTS}
@@ -400,7 +395,7 @@ function MarketplaceInner() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-muted-foreground font-mono text-[11px] uppercase">Category</Label>
+                    <Label>Category</Label>
                     <Select
                       value={category}
                       items={categories.map((c) => ({ value: c.slug, label: c.name }))}
@@ -421,7 +416,7 @@ function MarketplaceInner() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-muted-foreground font-mono text-[11px] uppercase">Pricing</Label>
+                    <Label>Pricing</Label>
                     <Select
                       value={pricingModel}
                       items={PRICING_FILTERS}
@@ -441,7 +436,7 @@ function MarketplaceInner() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-muted-foreground font-mono text-[11px] uppercase">Minimum rating</Label>
+                    <Label>Minimum rating</Label>
                     <Select
                       value={minRating}
                       items={[
@@ -465,9 +460,7 @@ function MarketplaceInner() {
                   </div>
 
                   <div className="bg-muted flex h-7 items-center justify-between rounded-lg px-2.5">
-                    <Label htmlFor="featured-only" className="text-muted-foreground font-mono text-[11px] uppercase">
-                      Featured only
-                    </Label>
+                    <Label htmlFor="featured-only">Featured only</Label>
                     <Switch size="sm" id="featured-only" checked={featuredOnly} onCheckedChange={setFeaturedOnly} />
                   </div>
 
@@ -541,7 +534,7 @@ function MarketplaceInner() {
 
           {/* loading overlay for filter changes */}
           {loading && agents !== null && agents.length > 0 && (
-            <p className="text-muted-foreground mt-4 animate-pulse font-mono text-xs">
+            <p className="text-muted-foreground mt-4 animate-pulse text-xs">
               refreshing results…
             </p>
           )}
@@ -549,8 +542,8 @@ function MarketplaceInner() {
       ) : (
         /* ------------------------------------------------- leaderboard */
         <div>
-          <p className="text-muted-foreground mb-3 font-mono text-xs">
-            ranked by quality (ratings ×20) + reviews (×2) + usage (runs) + paid adoption (sales ×5)
+          <p className="text-muted-foreground mb-3 text-xs">
+            Ranked by ratings, reviews, runs, and paid adoption.
           </p>
           {!token ? (
             <div className="rounded-xl border border-dashed border-border px-8 py-12 text-center">
@@ -577,7 +570,7 @@ function MarketplaceInner() {
                   className="ring-foreground/10 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-card px-4 py-3 ring-1 transition-shadow hover:ring-foreground/20"
                 >
                   <span
-                    className={`flex h-8 min-w-9 items-center justify-center rounded-md px-2 font-mono text-sm ring-1 ${
+                    className={`flex h-8 min-w-9 items-center justify-center rounded-md px-2 text-sm ring-1 ${
                       entry.rank === 1
                         ? "bg-warning/10 text-warning ring-warning/30"
                         : entry.rank === 2
@@ -598,24 +591,24 @@ function MarketplaceInner() {
                         {entry.agent_name}
                       </Link>
                     </p>
-                    <p className="text-muted-foreground font-mono text-xs">
+                    <p className="text-muted-foreground text-xs">
                       by {entry.owner_display_name || entry.owner_email} · {entry.model_name} · {entry.autonomy_level}
                       {entry.sandbox_enabled ? " · sandboxed" : ""}
                     </p>
                   </div>
                   <StarRating rating={entry.avg_rating} count={entry.rating_count} />
-                  <div className="text-muted-foreground hidden font-mono text-xs sm:block">
+                  <div className="text-muted-foreground hidden text-xs sm:block">
                     {entry.run_count} run{entry.run_count === 1 ? "" : "s"} · {entry.sales_count} sale
                     {entry.sales_count === 1 ? "" : "s"}
                   </div>
-                  <Badge variant={entry.pricing_model === "free" ? "outline" : "secondary"} className="font-mono">
+                  <Badge variant={entry.pricing_model === "free" ? "outline" : "secondary"}>
                     {pricingLabel({
                       model: entry.pricing_model || "free",
                       currency: entry.currency,
                       amount_minor: entry.amount_minor,
                     })}
                   </Badge>
-                  <span className="font-mono text-sm font-medium">{entry.score}</span>
+                  <span className="text-sm font-medium">{entry.score}</span>
                 </div>
               ))}
             </div>
@@ -707,7 +700,7 @@ function AgentListRows({
             </p>
           </div>
           <StarRating rating={agent.average_rating} count={agent.rating_count} />
-          <Badge variant={agent.pricing?.model === "free" ? "outline" : "secondary"} className="font-mono">
+          <Badge variant={agent.pricing?.model === "free" ? "outline" : "secondary"}>
             {pricingLabel(agent.pricing)}
           </Badge>
           <div className="flex items-center gap-1.5">

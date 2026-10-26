@@ -17,7 +17,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { RefreshCwIcon, RepeatIcon, ShieldCheckIcon, WalletIcon, type LucideIcon } from "lucide-react";
+import { RefreshCwIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +47,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { EmptyState, PageHeader } from "@/components/ui-page";
+import { EmptyState, PageHeader, StatCard } from "@/components/ui-page";
 import { AgentMonogram } from "@/components/marketplace/agent-card";
 import { api, getToken, messageFromError, useApiQuery } from "@/lib/api";
 import type {
@@ -58,48 +58,6 @@ import type {
 import { formatMoney, pricingLabel } from "@/lib/money";
 
 /* ------------------------------------------------------------------ shared */
-
-const CHIP_STYLES = {
-  brand: "bg-brand/10 text-brand ring-brand/20",
-  success: "bg-success/10 text-success ring-success/20",
-  neutral: "bg-muted text-muted-foreground ring-foreground/5",
-} as const;
-
-function StatCard({
-  icon: Icon,
-  chip = "neutral",
-  label,
-  value,
-  sub,
-}: {
-  icon: LucideIcon;
-  chip?: keyof typeof CHIP_STYLES;
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2 font-mono text-[10px] font-medium uppercase tracking-widest text-muted-foreground/80">
-          <span className="min-w-0 truncate">{label}</span>
-          <span
-            aria-hidden
-            className={`flex size-6 shrink-0 items-center justify-center rounded-md ring-1 ${CHIP_STYLES[chip]}`}
-          >
-            <Icon className="size-3.5" />
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="font-mono text-2xl leading-none font-medium tracking-tight text-foreground">
-          {value}
-        </p>
-        {sub ? <p className="mt-1.5 text-xs text-muted-foreground">{sub}</p> : null}
-      </CardContent>
-    </Card>
-  );
-}
 
 /* Status badges — semantic tokens only: active=success, muted=secondary,
    past due / pending / partially refunded=warning, revoked/failed=destructive. */
@@ -228,9 +186,8 @@ function TableRowSkeleton({ rows = 4 }: { rows?: number }) {
 }
 
 const PageSkeleton = () => (
-  <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+  <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
     <PageHeader
-      eyebrow="your access"
       title="Purchases"
       description="Everything you own, what you paid, and the subscriptions you control."
     />
@@ -353,9 +310,8 @@ export default function PurchasesPage() {
   if (!ready) return <PageSkeleton />;
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
       <PageHeader
-        eyebrow="your access"
         title="Purchases"
         description="Everything you own, what you paid, and the subscriptions you control."
       >
@@ -369,23 +325,17 @@ export default function PurchasesPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-3">
           <StatCard
-            icon={ShieldCheckIcon}
-            chip="success"
-            label="active access"
+            label="Active access"
             value={activeCount != null ? String(activeCount) : "—"}
             sub="agents available right now"
           />
           <StatCard
-            icon={WalletIcon}
-            chip="brand"
-            label="total spent"
+            label="Total spent"
             value={totalSpent ? formatMoney(totalSpent.amount, totalSpent.currency) : "—"}
             sub="verified payments only"
           />
           <StatCard
-            icon={RepeatIcon}
-            chip="brand"
-            label="subscriptions"
+            label="Subscriptions"
             value={activeSubs != null ? String(activeSubs) : "—"}
             sub="active auto-renewals"
           />
@@ -399,7 +349,7 @@ export default function PurchasesPage() {
             <h2 className="text-sm font-medium">My agents</h2>
             <Link
               href="/marketplace"
-              className="font-mono text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
               browse marketplace →
             </Link>
@@ -443,7 +393,7 @@ export default function PurchasesPage() {
                       </CardTitle>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <EntitlementStatusBadge status={e.status} />
-                        <Badge variant="outline" className="font-mono text-[10px]">
+                        <Badge variant="outline" className="text-[10px]">
                           {ENT_SOURCE_LABEL[e.source] ?? e.source}
                         </Badge>
                         {e.runs_remaining != null && (
@@ -469,7 +419,7 @@ export default function PurchasesPage() {
                         </Button>
                       )}
                       {valid && (
-                        <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+                        <span className="ml-auto text-[11px] text-muted-foreground">
                           {valid}
                         </span>
                       )}
@@ -520,7 +470,7 @@ export default function PurchasesPage() {
                       </p>
                       <SubscriptionStatusBadge status={s.status} />
                     </div>
-                    <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                    <p className="mt-1 text-[11px] text-muted-foreground">
                       {pricingLabel({
                         model: "subscription",
                         currency: s.currency,
@@ -616,7 +566,7 @@ export default function PurchasesPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        <span className="font-mono">{p.pricing_model}</span>
+                        <span>{p.pricing_model}</span>
                         {p.runs_included ? ` · pack of ${p.runs_included} runs` : ""}
                         {p.provider_mode ? ` · ${p.provider_mode} mode` : ""}
                       </TableCell>

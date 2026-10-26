@@ -14,19 +14,13 @@ import {
   YAxis,
 } from "recharts";
 import {
-  ArrowDownToLineIcon,
   CircleAlertIcon,
-  ClockIcon,
-  CoinsIcon,
   DownloadIcon,
-  HistoryIcon,
   LandmarkIcon,
   LoaderCircleIcon,
   PlusIcon,
   RefreshCwIcon,
-  ReceiptTextIcon,
   TrendingUpIcon,
-  WalletIcon,
 } from "lucide-react";
 import {
   Card,
@@ -66,7 +60,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { EmptyState, PageHeader } from "@/components/ui-page";
+import { EmptyState, PageHeader, StatCard } from "@/components/ui-page";
 import { api, API_BASE, getToken, messageFromError } from "@/lib/api";
 import { currencySymbol, formatMoney, pricingLabel } from "@/lib/money";
 
@@ -242,40 +236,6 @@ function monthLabel(key: string): string {
 
 const COMPACT = new Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 });
 
-/* ------------------------------------------------------------- stat cards */
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-  iconClass = "bg-muted text-muted-foreground ring-foreground/10",
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: React.ReactNode;
-  hint?: React.ReactNode;
-  iconClass?: string;
-}) {
-  return (
-    <div className="rounded-xl bg-card px-4 py-3 ring-1 ring-foreground/10">
-      <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">{label}</p>
-        <span
-          aria-hidden
-          className={`flex size-6 shrink-0 items-center justify-center rounded-md ring-1 ${iconClass}`}
-        >
-          {icon}
-        </span>
-      </div>
-      <div className="mt-1 flex items-baseline gap-2">
-        <span className="text-2xl font-medium tracking-tight">{value}</span>
-        {hint && <span className="truncate text-xs text-muted-foreground">{hint}</span>}
-      </div>
-    </div>
-  );
-}
-
 /* --------------------------------------------------------------- tooltips */
 
 function ChartTip({
@@ -293,7 +253,7 @@ function ChartTip({
   const minor = Math.round(Number(payload[0]?.value ?? 0) * 100);
   return (
     <div className="rounded-lg bg-popover px-3 py-2 text-xs shadow-md ring-1 ring-foreground/10">
-      <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{label}</p>
+      <p className="text-[11px] text-muted-foreground">{label}</p>
       <p className="mt-0.5 font-medium">{formatMoney(minor, currency)}</p>
     </div>
   );
@@ -562,9 +522,8 @@ export default function EarningsPage() {
   const filtersActive = Boolean(entryType || fromDate || toDate);
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
       <PageHeader
-        eyebrow="creator finance"
         title="Earnings"
         description="Your sales, your ledger, your payouts — every number here is derived from the auditable ledger, not an estimate."
       >
@@ -594,80 +553,38 @@ export default function EarningsPage() {
           {/* -------------------------------------------------- overview */}
           {!overview || !overview.monthly_series ? (
             <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              {Array.from({ length: 10 }).map((_, i) => (
-                <Skeleton key={i} className="h-[68px] rounded-xl" />
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-[86px] rounded-xl" />
               ))}
             </div>
           ) : (
-            <>
-              <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <StatCard
-                  icon={<WalletIcon className="size-3.5" />}
-                  label="Available balance"
-                  value={formatMoney(available, cur)}
-                  hint="ready to withdraw"
-                  iconClass="bg-brand/10 text-brand ring-brand/20"
-                />
-                <StatCard
-                  icon={<ClockIcon className="size-3.5" />}
-                  label="Pending payouts"
-                  value={formatMoney(pending, cur)}
-                  hint={pending > 0 ? "reserved until the provider confirms" : "nothing in flight"}
-                  iconClass="bg-warning/10 text-warning ring-warning/20"
-                />
-                <StatCard
-                  icon={<TrendingUpIcon className="size-3.5" />}
-                  label="Lifetime net earnings"
-                  value={formatMoney(overview.net_earnings_minor, cur)}
-                  hint="after platform fees"
-                  iconClass="bg-success/10 text-success ring-success/20"
-                />
-                <StatCard
-                  icon={<ArrowDownToLineIcon className="size-3.5" />}
-                  label="Min payout"
-                  value={formatMoney(PLATFORM_MIN_PAYOUT_MINOR, cur)}
-                  hint="platform minimum"
-                />
-                <StatCard
-                  icon={<CoinsIcon className="size-3.5" />}
-                  label="Currency"
-                  value={cur}
-                  hint="ledger settlement"
-                />
-              </div>
-              <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <StatCard
-                  icon={<ReceiptTextIcon className="size-3.5" />}
-                  label="Gross sales"
-                  value={formatMoney(overview.gross_sales_minor, cur)}
-                  hint={`${overview.total_sales} paid sale${overview.total_sales === 1 ? "" : "s"} · ${overview.customers} customer${overview.customers === 1 ? "" : "s"}`}
-                />
-                <StatCard
-                  icon={<CoinsIcon className="size-3.5" />}
-                  label="Platform fees"
-                  value={formatMoney(overview.platform_fees_minor, cur)}
-                  hint="commission withheld at payment"
-                />
-                <StatCard
-                  icon={<HistoryIcon className="size-3.5" />}
-                  label="Refund reversals"
-                  value={formatMoney(overview.refund_reversals_total_minor, cur)}
-                  hint="debited when you refund"
-                />
-                <StatCard
-                  icon={<LandmarkIcon className="size-3.5" />}
-                  label="Total paid out"
-                  value={formatMoney(overview.total_paid_out_minor, cur)}
-                  hint="settled to your account"
-                />
-                <StatCard
-                  icon={<RefreshCwIcon className="size-3.5" />}
-                  label="Active subscriptions"
-                  value={overview.active_subscriptions}
-                  hint={`${overview.published_agents} published agent${overview.published_agents === 1 ? "" : "s"}`}
-                />
-              </div>
-            </>
+            <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <StatCard
+                label="Available balance"
+                value={formatMoney(available, cur)}
+                sub="ready to withdraw"
+              />
+              <StatCard
+                label="Pending payouts"
+                value={formatMoney(pending, cur)}
+                sub={pending > 0 ? "reserved until the provider confirms" : "nothing in flight"}
+              />
+              <StatCard
+                label="Lifetime net"
+                value={formatMoney(overview.net_earnings_minor, cur)}
+                sub="after platform fees"
+              />
+              <StatCard
+                label="Gross sales"
+                value={formatMoney(overview.gross_sales_minor, cur)}
+                sub={`${overview.total_sales} paid sale${overview.total_sales === 1 ? "" : "s"} · ${overview.customers} customer${overview.customers === 1 ? "" : "s"}`}
+              />
+              <StatCard
+                label="Platform fees"
+                value={formatMoney(overview.platform_fees_minor, cur)}
+                sub={`commission withheld at payment · ${formatMoney(overview.refund_reversals_total_minor, cur)} refund reversals`}
+              />
+            </div>
           )}
 
           {/* ---------------------------------------------- monthly chart */}
@@ -679,7 +596,7 @@ export default function EarningsPage() {
                   Credited minus debited, straight from the ledger — sales lead, refunds and payouts pull it down.
                 </CardDescription>
                 <CardAction>
-                  <Badge variant="outline" className="font-mono text-[10px] uppercase">{cur}</Badge>
+                  <Badge variant="outline">{cur}</Badge>
                 </CardAction>
               </CardHeader>
               <CardContent>
@@ -726,6 +643,7 @@ export default function EarningsPage() {
                           stroke="var(--chart-1)"
                           strokeWidth={2}
                           fill="url(#ledgerFill)"
+                          dot={{ r: 2.5, fill: "var(--chart-1)", strokeWidth: 0 }}
                         />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -748,8 +666,8 @@ export default function EarningsPage() {
                     key={a.agent_id}
                     className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm ring-1 ring-foreground/5"
                   >
-                    <span className="truncate font-medium">{a.name}</span>
-                    <span className="font-mono text-xs text-muted-foreground">
+                    <span className="min-w-0 truncate font-medium">{a.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
                       {a.sales} sale{a.sales === 1 ? "" : "s"} · {formatMoney(a.gross_minor, cur)}
                     </span>
                   </div>
@@ -788,7 +706,7 @@ export default function EarningsPage() {
                   </SelectContent>
                 </Select>
                 <div className="space-y-1">
-                  <Label className="font-mono text-[10px] uppercase text-muted-foreground" htmlFor="from-date">From</Label>
+                  <Label className="text-xs text-muted-foreground" htmlFor="from-date">From</Label>
                   <Input
                     id="from-date"
                     type="date"
@@ -798,7 +716,7 @@ export default function EarningsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="font-mono text-[10px] uppercase text-muted-foreground" htmlFor="to-date">To</Label>
+                  <Label className="text-xs text-muted-foreground" htmlFor="to-date">To</Label>
                   <Input
                     id="to-date"
                     type="date"
@@ -958,9 +876,7 @@ export default function EarningsPage() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className={`font-mono text-[10px] ${badge.className}`}>
-                              {p.status}
-                            </Badge>
+                            <Badge variant="outline" className={badge.className}>{p.status}</Badge>
                           </TableCell>
                           <TableCell className="font-mono text-xs text-muted-foreground">
                             {new Date(p.requested_at).toLocaleString()}
@@ -1017,7 +933,7 @@ export default function EarningsPage() {
                     <div className="space-y-3 rounded-xl bg-muted/40 p-4 ring-1 ring-foreground/10">
                       <div className="flex flex-wrap items-end gap-3">
                         <div className="space-y-1">
-                          <Label className="font-mono text-[10px] uppercase text-muted-foreground">Model</Label>
+                          <Label>Model</Label>
                           <Select value={planModel} onValueChange={(v) => setPlanModel(v ?? "free")}>
                             <SelectTrigger className="w-[190px]">
                               <SelectValue />
@@ -1031,9 +947,7 @@ export default function EarningsPage() {
                         </div>
                         {planModel !== "free" && (
                           <div className="space-y-1">
-                            <Label className="font-mono text-[10px] uppercase text-muted-foreground" htmlFor="plan-amount">
-                              Price (₹)
-                            </Label>
+                            <Label htmlFor="plan-amount">Price (₹)</Label>
                             <Input
                               id="plan-amount"
                               type="number"
@@ -1048,7 +962,7 @@ export default function EarningsPage() {
                         )}
                         {planModel === "subscription" && (
                           <div className="space-y-1">
-                            <Label className="font-mono text-[10px] uppercase text-muted-foreground">Billing</Label>
+                            <Label>Billing</Label>
                             <Select value={planInterval} onValueChange={(v) => setPlanInterval(v ?? "month")}>
                               <SelectTrigger className="w-[130px]">
                                 <SelectValue />
@@ -1062,9 +976,7 @@ export default function EarningsPage() {
                         )}
                         {planModel === "pay_per_execution" && (
                           <div className="space-y-1">
-                            <Label className="font-mono text-[10px] uppercase text-muted-foreground" htmlFor="plan-runs">
-                              Runs per pack
-                            </Label>
+                            <Label htmlFor="plan-runs">Runs per pack</Label>
                             <Input
                               id="plan-runs"
                               type="number"
@@ -1108,7 +1020,7 @@ export default function EarningsPage() {
                 {profile && (
                   <Badge
                     variant="outline"
-                    className={`font-mono text-[10px] ${
+                    className={`text-[10px] ${
                       profile.onboarding_status === "verified"
                         ? "border-transparent bg-success/10 text-success ring-1 ring-success/20"
                         : profile.onboarding_status === "pending"

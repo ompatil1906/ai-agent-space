@@ -7,16 +7,7 @@ const COLUMNS: { title: string; links: { href: string; label: string }[] }[] = [
     title: "Marketplace",
     links: [
       { href: "/marketplace", label: "Explore agents" },
-      { href: "/marketplace?sort=popular", label: "Popular" },
-      { href: "/marketplace?sort=newest", label: "Newest" },
-    ],
-  },
-  {
-    title: "Builders",
-    links: [
-      { href: "/agents", label: "My agents" },
       { href: "/mcp-servers", label: "MCP tools" },
-      { href: "/register", label: "Create account" },
     ],
   },
   {
@@ -58,9 +49,7 @@ export function SiteFooter() {
           <nav className="grid grid-cols-2 gap-8 sm:grid-cols-3">
             {COLUMNS.map((col) => (
               <div key={col.title}>
-                <p className="font-mono text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-                  {col.title}
-                </p>
+                <p className="text-sm font-medium">{col.title}</p>
                 <ul className="mt-3 space-y-2">
                   {col.links.map((l) => (
                     <li key={l.label}>
@@ -78,8 +67,12 @@ export function SiteFooter() {
           </nav>
         </div>
         <div className="border-border/60 mt-8 flex flex-col gap-2 border-t pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <FooterYear />
-          <span className="font-mono">agent-native · mcp-first</span>
+          <p>
+            © <FooterYear /> AI Agent Space · Payments and payouts are processed by Razorpay
+          </p>
+          <Link href="/agents" className="transition-colors hover:text-foreground">
+            Start building
+          </Link>
         </div>
       </div>
     </footer>

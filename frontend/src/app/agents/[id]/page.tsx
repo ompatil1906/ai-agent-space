@@ -411,11 +411,11 @@ function AgentRunContent() {
   const activityLines = (evs: StreamEvent[]): string[] => {
     const lines: string[] = [];
     for (const ev of evs) {
-      if (ev.type === "tool_call") lines.push(`🔧 Using ${prettyName(ev.name || "")}…`);
+      if (ev.type === "tool_call") lines.push(`Using ${prettyName(ev.name || "")}…`);
       else if (ev.type === "tool_result") lines.push(`✓ ${prettyName(ev.name || "")} worked`);
-      else if (ev.type === "agent_step") lines.push(`▸ ${ev.agent || "Step"}: ${shorten(ev.content || "")}`);
-      else if (ev.type === "thought" && ev.content) lines.push(`💭 ${shorten(ev.content, 90)}`);
-      else if (ev.type === "reflection") lines.push(`⟳ Double-checking its answer…`);
+      else if (ev.type === "agent_step") lines.push(`${ev.agent || "Step"}: ${shorten(ev.content || "")}`);
+      else if (ev.type === "thought" && ev.content) lines.push(`Thinking: ${shorten(ev.content, 90)}`);
+      else if (ev.type === "reflection") lines.push(`Double-checking its answer…`);
       else if (ev.type === "error") lines.push(`⚠ ${shorten(ev.content || "", 90)}`);
     }
     return lines;
@@ -424,7 +424,7 @@ function AgentRunContent() {
   const toolCount = (evs: StreamEvent[]) => evs.filter((e) => e.type === "tool_call").length;
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-12">
       <div className="mb-6">
         <nav aria-label="Breadcrumb" className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
           <Link href="/agents" className="transition-colors hover:text-foreground">
@@ -435,10 +435,7 @@ function AgentRunContent() {
         </nav>
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
           <div className="min-w-0">
-            <p className="text-muted-foreground font-mono text-[11px] uppercase tracking-widest">
-              agent console
-            </p>
-            <h1 className="mt-1 text-2xl font-medium tracking-tight">
+            <h1 className="text-2xl font-medium tracking-tight">
               {agent?.name || "Agent"}
             </h1>
             <p className="text-muted-foreground mt-1 text-sm">
@@ -456,17 +453,17 @@ function AgentRunContent() {
         </div>
       </div>
       <div className="text-muted-foreground mb-4 flex flex-wrap items-center gap-2 text-xs">
-        <Badge variant="secondary" className="text-[10px] font-mono">{agent?.model_name}</Badge>
+        <Badge variant="secondary" className="text-[10px]">{agent?.model_name}</Badge>
         {agent?.tools_config && agent.tools_config.length > 0 && (
-          <Badge variant="outline" className="text-[10px] font-mono text-success">
+          <Badge variant="outline" className="text-[10px] text-success">
             {agent.tools_config.length} tool{agent.tools_config.length === 1 ? "" : "s"}
           </Badge>
         )}
         {agent?.workflow_config?.type && agent.workflow_config.type !== "single" && (
-          <Badge variant="outline" className="text-[10px] font-mono">team</Badge>
+          <Badge variant="outline" className="text-[10px]">team</Badge>
         )}
         {agent?.autonomy_level && (
-          <Badge variant="outline" className="text-[10px] font-mono">{agent.autonomy_level}</Badge>
+          <Badge variant="outline" className="text-[10px]">{agent.autonomy_level}</Badge>
         )}
       </div>
 
@@ -561,7 +558,7 @@ function AgentRunContent() {
                     <span aria-hidden className="inline-block size-1.5 animate-pulse rounded-full bg-success" />
                     Working…
                   </p>
-                  {activityLines(events).filter((l) => !l.startsWith("💭") && !l.startsWith("⟳")).slice(-4).map((line, li) => (
+                  {activityLines(events).filter((l) => !l.startsWith("Thinking:") && !l.startsWith("Double-checking")).slice(-4).map((line, li) => (
                     <p key={li} className="mt-1.5 text-xs text-muted-foreground">{line}</p>
                   ))}
                   {events.filter((e) => e.type === "token").length > 0 && (
@@ -604,12 +601,12 @@ function AgentRunContent() {
             <div ref={chatEndRef} />
           </div>
           {runUsage && (
-            <p className="text-right font-mono text-[10px] text-muted-foreground">
+            <p className="text-right text-[11px] text-muted-foreground">
               {runUsage.total_tokens} tokens · ≈ ${runUsage.estimated_cost_usd.toFixed(5)}
             </p>
           )}
           {!loading && finalConfidence != null && (
-            <p className="text-right font-mono text-[10px] text-muted-foreground">
+            <p className="text-right text-[11px] text-muted-foreground">
               answer confidence: {Math.round(finalConfidence * 100)}%
             </p>
           )}
@@ -652,7 +649,7 @@ function AgentRunContent() {
             ) : (
               <Button onClick={runAgent} disabled={!input.trim()}>Send</Button>
             )}
-            <span className="font-mono text-[10px] text-muted-foreground">Enter to send · Shift+Enter for a new line</span>
+            <span className="text-[11px] text-muted-foreground">Enter to send · Shift+Enter for a new line</span>
           </div>
             </>
           )}
@@ -678,7 +675,7 @@ function AgentRunContent() {
                     <p className="truncate font-medium">{run.input}</p>
                     <Badge
                       variant="outline"
-                      className={`shrink-0 font-mono text-[10px] ${
+                      className={`shrink-0 text-[10px] ${
                         run.status === "completed"
                           ? "text-success border-success/30 bg-success/10"
                           : run.status === "error"
@@ -746,7 +743,7 @@ function AgentRunContent() {
                 {memories.map((m) => (
                   <div key={m.id} className="text-xs rounded-lg border border-border bg-card p-2 flex justify-between gap-2">
                     <div className="flex-1">
-                      <div className="font-mono text-muted-foreground">{m.id.slice(0, 8)}</div>
+                      <div className="text-muted-foreground">{m.id.slice(0, 8)}</div>
                       <div className="mt-1">{m.text.slice(0, 200)}{m.text.length > 200 ? "..." : ""}</div>
                     </div>
                     <Button
