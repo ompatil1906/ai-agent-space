@@ -1,4 +1,11 @@
 # Changelog
+## [1.0.13] - 2026-10-26
+### Fixed
+- Marketplace leaderboard showed raw creator emails; the endpoint now exposes `owner_display_name` (creator profile display name with email fallback) and the leaderboard row uses it
+- Landing page "Meet the agents" block latched the StrictMode fetch-abort as a permanent error ("signal is aborted without reason"); AbortError is now ignored and a successful load clears the error state
+### Added
+- Showcase seed verified end-to-end in the live app (marketplace, landing, listing pages, purchases, earnings, admin orders/payouts/reports/audit, MCP tools) — every money figure cross-checks against the auditable ledger
+
 ## [1.0.12] - 2026-10-26
 ### Fixed
 - Runtime crash when opening the account dropdown or admin row Actions menu: `DropdownMenuLabel` (`Menu.GroupLabel`) is now wrapped in `Menu.Group` in the site header and admin console ("MenuGroupContext is missing")
@@ -8,6 +15,8 @@
 - Publish dialog copy no longer claims moderation review when the platform publishes immediately (`MARKETPLACE_MODERATION=off`); confirm button renamed to "Publish listing"
 - Lint hygiene: removed unused imports, replaced `window.location.href` with `router.push` for header logout, added async boundaries for setState within effects
 
+### Added
+- `backend/scripts/seed_showcase.py`: temporary demo/showcase dataset — 8 marketplace-ready agents with full listing payloads, pricing plans (free / one_time / subscription / pay_per_execution), verified ratings & reviews, mock-gateway-marked payments, purchases with real commission splits, active subscriptions, run history, evaluations, Showcase MCP servers, one processed partial refund, a paid + a pending payout, and admin audit entries. `--purge` removes only showcase-marked data and never touches real accounts or the RT Checker agent.
 
 ## [1.0.11] - 2026-10-25
 ### Changed

@@ -57,6 +57,7 @@ interface LeaderboardEntry {
   agent_slug?: string | null;
   agent_name: string;
   owner_email: string;
+  owner_display_name?: string | null;
   model_name: string;
   pricing_model?: string | null;
   amount_minor?: number | null;
@@ -515,7 +516,7 @@ function MarketplaceInner() {
                       </Link>
                     </p>
                     <p className="text-muted-foreground font-mono text-xs">
-                      by {entry.owner_email} · {entry.model_name} · {entry.autonomy_level}
+                      by {entry.owner_display_name || entry.owner_email} · {entry.model_name} · {entry.autonomy_level}
                       {entry.sandbox_enabled ? " · sandboxed" : ""}
                     </p>
                   </div>

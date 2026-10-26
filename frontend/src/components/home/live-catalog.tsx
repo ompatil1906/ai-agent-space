@@ -25,8 +25,14 @@ export function LiveCatalog() {
       .then(setCategories)
       .catch(() => {});
     api<PublicAgent[]>("/marketplace/agents/featured?limit=8", { signal: controller.signal, auth: false })
-      .then(setFeatured)
-      .catch((e: Error) => setError(e.message));
+      .then((rows) => {
+        setError(null);
+        setFeatured(rows);
+      })
+      .catch((e: Error) => {
+        if (e?.name === "AbortError") return;
+        setError(e.message);
+      });
     api<PublicAgent[]>("/marketplace/agents/trending?limit=8", { signal: controller.signal, auth: false })
       .then(setTrending)
       .catch(() => {});

@@ -678,6 +678,11 @@ def get_leaderboard(
                 "agent_slug": agent.slug,
                 "description": agent.description,
                 "owner_email": agent.owner.email if agent.owner else "unknown",
+                "owner_display_name": (
+                    agent.owner.creator_profile.display_name
+                    if agent.owner and getattr(agent.owner, "creator_profile", None)
+                    else None
+                ),
                 "owner_id": agent.owner_id,
                 "model_name": agent.model_name,
                 "price": agent.price or 0,
