@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ChevronDownIcon,
@@ -18,7 +18,7 @@ import {
   BotIcon,
 } from "lucide-react";
 import { cn } from "cn";
-import { API_BASE, AUTH_EVENT, api, clearToken, getToken, messageFromError } from "@/lib/api";
+import { AUTH_EVENT, api, clearToken, getToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -64,6 +64,7 @@ function HeaderInner() {
   const [me, setMe] = useState<Me | null>(null);
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
@@ -101,7 +102,7 @@ function HeaderInner() {
 
   // Close the mobile panel whenever a navigation happens.
   useEffect(() => {
-    setOpen(false);
+    void Promise.resolve().then(() => setOpen(false));
   }, [pathname]);
 
   const logout = async () => {
@@ -111,7 +112,7 @@ function HeaderInner() {
     setAuthed(false);
     setMe(null);
     toast.success("Signed out");
-    window.location.href = "/login";
+    router.push("/login");
   };
 
   const isAdmin = Boolean(me && (me.role === "admin" || me.is_superuser));
@@ -131,14 +132,13 @@ function HeaderInner() {
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-3 px-4 sm:px-6">
         <Link href="/" className="group flex shrink-0 items-center gap-2.5">
-          <span className="flex size-7 items-center justify-center rounded-lg border border-border/80 bg-zinc-950 p-1 shadow-sm transition-transform duration-200 group-hover:scale-105">
+          <span className="flex size-8 items-center justify-center rounded-lg border border-border/80 bg-zinc-950 p-1 shadow-sm transition-transform duration-200 group-hover:scale-105">
             <Image
               src="/logos/icon.svg"
               alt="AI Agent Space logo"
               width={20}
               height={20}
               className="size-5 rounded-sm object-contain"
-              priority
             />
           </span>
           <span className="text-sm font-semibold tracking-tight">
@@ -188,14 +188,16 @@ function HeaderInner() {
                   }
                 />
                 <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel className="flex flex-col items-start gap-0.5">
-                    <span className="max-w-44 truncate text-sm font-medium text-foreground">
-                      {me?.full_name?.trim() || me?.email}
-                    </span>
-                    <span className="max-w-44 truncate text-xs font-normal text-muted-foreground">
-                      {me?.email}
-                    </span>
-                  </DropdownMenuLabel>
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="flex flex-col items-start gap-0.5">
+                      <span className="max-w-44 truncate text-sm font-medium text-foreground">
+                        {me?.full_name?.trim() || me?.email}
+                      </span>
+                      <span className="max-w-44 truncate text-xs font-normal text-muted-foreground">
+                        {me?.email}
+                      </span>
+                    </DropdownMenuLabel>
+                  </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
                     {authed && isAdmin && (

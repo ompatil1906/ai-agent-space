@@ -1074,8 +1074,8 @@ export default function AdminPage() {
                               }
                             />
                             <DropdownMenuContent align="end" className="w-60">
-                              <DropdownMenuLabel>Moderation</DropdownMenuLabel>
                               <DropdownMenuGroup>
+                                <DropdownMenuLabel>Moderation</DropdownMenuLabel>
                                 {moderationMenu.map((act) => (
                                   <DropdownMenuItem
                                     key={act.action}
@@ -1086,8 +1086,8 @@ export default function AdminPage() {
                                 ))}
                               </DropdownMenuGroup>
                               <DropdownMenuSeparator />
-                              <DropdownMenuLabel>Visibility</DropdownMenuLabel>
                               <DropdownMenuGroup>
+                                <DropdownMenuLabel>Visibility</DropdownMenuLabel>
                                 {visibilityMenu.map((act) => (
                                   <DropdownMenuItem
                                     key={act.action}

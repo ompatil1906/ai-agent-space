@@ -98,7 +98,7 @@ export default function AgentsPage() {
         return; // wait for auth check to settle
       }
     }
-    if (authed && token) void fetchAgents();
+    if (authed && token) void Promise.resolve().then(() => fetchAgents());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed, token]);
 
@@ -420,7 +420,7 @@ export default function AgentsPage() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {publishAction === "publish"
-                ? "The listing goes into review. Once approved it becomes publicly discoverable — buyers then run it under your configured plan."
+                ? "Publishing makes the listing publicly discoverable — buyers then run it under your configured plan. If manual review is enabled, it goes to review first."
                 : "The listing stops being discoverable immediately. Buyers who already own it keep their access."}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -434,7 +434,7 @@ export default function AgentsPage() {
               }}
               disabled={working}
             >
-              {working ? "Working…" : publishAction === "publish" ? "Submit for review" : "Unpublish"}
+              {working ? "Working…" : publishAction === "publish" ? "Publish listing" : "Unpublish"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

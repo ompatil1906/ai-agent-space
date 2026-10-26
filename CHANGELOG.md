@@ -1,4 +1,14 @@
 # Changelog
+## [1.0.12] - 2026-10-26
+### Fixed
+- Runtime crash when opening the account dropdown or admin row Actions menu: `DropdownMenuLabel` (`Menu.GroupLabel`) is now wrapped in `Menu.Group` in the site header and admin console ("MenuGroupContext is missing")
+- Base UI Button semantics: `nativeButton` defaults to `false` whenever the button renders a custom element (e.g. Next `Link`), removing repeated console errors from header link buttons
+- Marketplace logo aspect-ratio distortion: chip container enlarged from `size-7` to `size-8` in the site header and footer so the 20px icon fits its content box
+- Unused-preload console warning: removed the deprecated `priority` preload on the header logo (login/register keep the Next `preload` API)
+- Publish dialog copy no longer claims moderation review when the platform publishes immediately (`MARKETPLACE_MODERATION=off`); confirm button renamed to "Publish listing"
+- Lint hygiene: removed unused imports, replaced `window.location.href` with `router.push` for header logout, added async boundaries for setState within effects
+
+
 ## [1.0.11] - 2026-10-25
 ### Changed
 - Final verification and solidification of the complete initial project structure

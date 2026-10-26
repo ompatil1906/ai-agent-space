@@ -37,7 +37,7 @@ export function SiteFooter() {
         <div className="flex flex-col gap-8 md:flex-row md:justify-between">
           <div className="max-w-xs">
             <Link href="/" className="flex items-center gap-2.5">
-              <span className="flex size-7 items-center justify-center rounded-lg border border-border/80 bg-zinc-950 p-1">
+              <span className="flex size-8 items-center justify-center rounded-lg border border-border/80 bg-zinc-950 p-1">
                 <Image
                   src="/logos/icon.svg"
                   alt=""
