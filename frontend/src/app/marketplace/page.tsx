@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
@@ -30,7 +31,7 @@ import type { PublicAgent, CategoryPublic } from "@/lib/types";
 import { pricingLabel } from "@/lib/money";
 import { PageHeader } from "@/components/ui-page";
 import { AgentCard } from "@/components/marketplace/agent-card";
-import { SearchIcon, StarIcon, XIcon, LayoutGridIcon, Rows3Icon, TrophyIcon } from "lucide-react";
+import { SearchIcon, StarIcon, XIcon, LayoutGridIcon, Rows3Icon, TrophyIcon, SlidersHorizontalIcon } from "lucide-react";
 
 const PRICING_FILTERS = [
   { value: "", label: "All pricing" },
@@ -268,7 +269,6 @@ function MarketplaceInner() {
     }
   };
 
-  const hasFilters = Boolean(search || category || pricingModel || minRating || featuredOnly);
   const clearFilters = () => {
     setSearch("");
     setCategory("");
@@ -276,6 +276,31 @@ function MarketplaceInner() {
     setMinRating("");
     setFeaturedOnly(false);
   };
+
+  // Active filter count (search excluded — it has its own inline clear)
+  const activeFilterCount =
+    (category ? 1 : 0) +
+    (pricingModel ? 1 : 0) +
+    (minRating ? 1 : 0) +
+    (featuredOnly ? 1 : 0) +
+    (sortBy !== "popular" ? 1 : 0);
+
+  const activeChips: { label: string; clear: () => void }[] = [];
+  if (sortBy !== "popular") {
+    activeChips.push({ label: `Sort: ${SORTS.find((s) => s.value === sortBy)?.label ?? sortBy}`, clear: () => setSortBy("popular") });
+  }
+  if (category) {
+    activeChips.push({ label: categories.find((c) => c.slug === category)?.name ?? category, clear: () => setCategory("") });
+  }
+  if (pricingModel) {
+    activeChips.push({ label: PRICING_FILTERS.find((p) => p.value === pricingModel)?.label ?? pricingModel, clear: () => setPricingModel("") });
+  }
+  if (minRating) {
+    activeChips.push({ label: `${minRating}★ and up`, clear: () => setMinRating("") });
+  }
+  if (featuredOnly) {
+    activeChips.push({ label: "Featured only", clear: () => setFeaturedOnly(false) });
+  }
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
@@ -338,75 +363,133 @@ function MarketplaceInner() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Select value={category} onValueChange={(v) => setCategory(v ?? "")}>
-                <SelectTrigger size="sm" className="w-44" aria-label="Category">
-                  <SelectValue placeholder="All categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All categories</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.slug}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={pricingModel} onValueChange={(v) => setPricingModel(v ?? "")}>
-                <SelectTrigger size="sm" className="w-40" aria-label="Pricing">
-                  <SelectValue placeholder="All pricing" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRICING_FILTERS.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={minRating} onValueChange={(v) => setMinRating(v ?? "")}>
-                <SelectTrigger size="sm" className="w-36" aria-label="Minimum rating">
-                  <SelectValue placeholder="Any rating" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Any rating</SelectItem>
-                  <SelectItem value="4">4★ and up</SelectItem>
-                  <SelectItem value="3">3★ and up</SelectItem>
-                  <SelectItem value="2">2★ and up</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v ?? "popular")}>
-                <SelectTrigger size="sm" className="w-44" aria-label="Sort">
-                  <SelectValue placeholder="Sort" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SORTS.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <div className="bg-muted flex h-7 items-center gap-2 rounded-lg px-2.5">
-                <Switch
-                  size="sm"
-                  id="featured-only"
-                  checked={featuredOnly}
-                  onCheckedChange={setFeaturedOnly}
+              {/* All filters live behind one button */}
+              <Popover>
+                <PopoverTrigger
+                  render={
+                    <Button variant="outline" size="sm" aria-label="Filters">
+                      <SlidersHorizontalIcon className="size-3.5" />
+                      Filters
+                      {activeFilterCount > 0 && (
+                        <span className="bg-primary text-primary-foreground ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium">
+                          {activeFilterCount}
+                        </span>
+                      )}
+                    </Button>
+                  }
                 />
-                <Label htmlFor="featured-only" className="text-xs text-muted-foreground">
-                  Featured
-                </Label>
-              </div>
+                <PopoverContent align="start" className="w-84 gap-4 p-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground font-mono text-[11px] uppercase">Sort</Label>
+                    <Select
+                      value={sortBy}
+                      items={SORTS}
+                      onValueChange={(v) => setSortBy(v ?? "popular")}
+                    >
+                      <SelectTrigger className="w-full" aria-label="Sort">
+                        <SelectValue placeholder="Sort" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SORTS.map((s) => (
+                          <SelectItem key={s.value} value={s.value}>
+                            {s.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  <XIcon className="size-3.5" /> Clear
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground font-mono text-[11px] uppercase">Category</Label>
+                    <Select
+                      value={category}
+                      items={categories.map((c) => ({ value: c.slug, label: c.name }))}
+                      onValueChange={(v) => setCategory(v ?? "")}
+                    >
+                      <SelectTrigger className="w-full" aria-label="Category">
+                        <SelectValue placeholder="All categories" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">All categories</SelectItem>
+                        {categories.map((c) => (
+                          <SelectItem key={c.id} value={c.slug}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground font-mono text-[11px] uppercase">Pricing</Label>
+                    <Select
+                      value={pricingModel}
+                      items={PRICING_FILTERS}
+                      onValueChange={(v) => setPricingModel(v ?? "")}
+                    >
+                      <SelectTrigger className="w-full" aria-label="Pricing">
+                        <SelectValue placeholder="All pricing" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PRICING_FILTERS.map((p) => (
+                          <SelectItem key={p.value} value={p.value}>
+                            {p.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-muted-foreground font-mono text-[11px] uppercase">Minimum rating</Label>
+                    <Select
+                      value={minRating}
+                      items={[
+                        { value: "", label: "Any rating" },
+                        { value: "4", label: "4★ and up" },
+                        { value: "3", label: "3★ and up" },
+                        { value: "2", label: "2★ and up" },
+                      ]}
+                      onValueChange={(v) => setMinRating(v ?? "")}
+                    >
+                      <SelectTrigger className="w-full" aria-label="Minimum rating">
+                        <SelectValue placeholder="Any rating" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">Any rating</SelectItem>
+                        <SelectItem value="4">4★ and up</SelectItem>
+                        <SelectItem value="3">3★ and up</SelectItem>
+                        <SelectItem value="2">2★ and up</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="bg-muted flex h-7 items-center justify-between rounded-lg px-2.5">
+                    <Label htmlFor="featured-only" className="text-muted-foreground font-mono text-[11px] uppercase">
+                      Featured only
+                    </Label>
+                    <Switch size="sm" id="featured-only" checked={featuredOnly} onCheckedChange={setFeaturedOnly} />
+                  </div>
+
+                  <Button variant="ghost" size="sm" className="w-full" disabled={activeFilterCount === 0} onClick={clearFilters}>
+                    <XIcon className="size-3.5" /> Clear all filters
+                  </Button>
+                </PopoverContent>
+              </Popover>
+
+              {/* Active filter chips */}
+              {activeChips.map((chip) => (
+                <Button
+                  key={chip.label}
+                  variant="outline"
+                  size="sm"
+                  className="text-foreground/80 h-7 gap-1.5 rounded-full px-2.5 font-normal"
+                  onClick={chip.clear}
+                  aria-label={`Remove filter ${chip.label}`}
+                >
+                  {chip.label} <XIcon className="text-muted-foreground size-3" />
                 </Button>
-              )}
+              ))}
             </div>
           </div>
 
@@ -422,7 +505,7 @@ function MarketplaceInner() {
             <div className="rounded-xl border border-dashed border-border px-8 py-14 text-center">
               <p className="font-medium">No published agents match</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {hasFilters
+                {activeFilterCount > 0
                   ? "Try clearing the filters — or be the first to publish one."
                   : "Be the first to publish one."}
               </p>

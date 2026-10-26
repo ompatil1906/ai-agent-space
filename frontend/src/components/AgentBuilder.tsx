@@ -12,6 +12,7 @@ import { McpLogo } from "@/components/McpLogo";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ListingPanel from "@/components/marketplace/listing-panel";
 import { API_BASE } from "@/lib/api";
+import { ChevronDownIcon } from "lucide-react";
 
 interface ToolConfig {
   name: string;
@@ -195,6 +196,16 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
     initial?.advanced_config?.output_schema ? JSON.stringify(initial.advanced_config.output_schema, null, 2) : '{\n  "type": "object",\n  "properties": {\n    "answer": { "type": "string" },\n    "confidence": { "type": "number" }\n  },\n  "required": ["answer"]\n}'
   );
   const [toolChoice, setToolChoice] = useState<string>(initial?.advanced_config?.tool_choice ?? "auto");
+
+  // Advanced settings disclosure — collapsed by default in Visual mode
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const advancedActiveCount =
+    (sandboxEnabled ? 1 : 0) +
+    (planningEnabled ? 1 : 0) +
+    (reflectEnabled ? 1 : 0) +
+    (structuredEnabled ? 1 : 0) +
+    (agentToolIds.length > 0 ? 1 : 0) +
+    (autonomyLevel !== "supervised" ? 1 : 0);
 
   // YAML editor
   const [editorMode, setEditorMode] = useState<"visual" | "yaml">("visual");
@@ -711,117 +722,153 @@ export default function AgentBuilder({ onSubmit, initial }: AgentBuilderProps) {
                 />
               </div>
 
-              {/* Execution & autonomy */}
-              <div className="space-y-3 rounded-lg border border-border p-4">
-                <h3 className="font-mono text-sm text-muted-foreground uppercase">Execution &amp; Autonomy</h3>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div>
-                    <label className="font-mono text-xs text-muted-foreground uppercase">Max Steps</label>
-                    <Input
-                      type="number"
-                      min={3}
-                      max={200}
-                      value={maxSteps}
-                      onChange={(e) => setMaxSteps(parseInt(e.target.value) || 25)}
-                    />
-                  </div>
-                  <div>
-                    <label className="font-mono text-xs text-muted-foreground uppercase">Autonomy Level</label>
-                    <Select value={autonomyLevel} onValueChange={(v: any) => setAutonomyLevel(v ?? "supervised")}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="supervised">Supervised (asks when unsure)</SelectItem>
-                        <SelectItem value="semi_autonomous">Semi-Autonomous</SelectItem>
-                        <SelectItem value="autonomous">Autonomous (plans long-horizon)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="font-mono text-xs text-muted-foreground uppercase">Max Reflections</label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={3}
-                      value={maxReflections}
-                      onChange={(e) => setMaxReflections(parseInt(e.target.value) || 0)}
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={sandboxEnabled} onChange={(e) => setSandboxEnabled(e.target.checked)} />
-                    <span className="font-mono text-xs">sandbox: code, terminal &amp; files (Docker-isolated)</span>
-                  </label>
-                  <div className="w-full mt-2 border-t pt-3">
-                    <p className="text-sm font-medium mb-1">Agent-as-Tool</p>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Bind other agents as callable tools. The agent can delegate subtasks to them (max nesting depth 3).
-                    </p>
-                    <div className="max-h-48 overflow-y-auto space-y-1 border rounded p-2 bg-muted/20">
-                      {availableAgents.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No other agents found. Create agents first.</p>
-                      ) : (
-                        availableAgents.map((a) => (
-                          <label key={a.id} className="flex items-start gap-2 text-xs cursor-pointer hover:bg-muted/50 p-1 rounded">
-                            <input
-                              type="checkbox"
-                              className="mt-0.5"
-                              checked={agentToolIds.includes(a.id)}
-                              onChange={(e) => {
-                                setAgentToolIds((prev) =>
-                                  e.target.checked ? [...prev, a.id] : prev.filter((id) => id !== a.id)
-                                );
-                              }}
-                            />
-                            <span>
-                              <strong>{a.name}</strong>
-                              {a.description && <span className="text-muted-foreground"> — {a.description.slice(0, 80)}</span>}
-                            </span>
-                          </label>
-                        ))
-                      )}
-                    </div>
-                    {agentToolIds.length > 0 && (
-                      <p className="text-xs mt-1 text-success">{agentToolIds.length} agent(s) bound as tools</p>
+              {/* Advanced settings — collapsed by default, execution & autonomy knobs live here */}
+              <div className="rounded-lg border border-border">
+                <button
+                  type="button"
+                  onClick={() => setAdvancedOpen((v) => !v)}
+                  aria-expanded={advancedOpen}
+                  className="flex w-full cursor-pointer items-center justify-between gap-3 p-4 text-left"
+                >
+                  <span>
+                    <span className="block text-sm font-medium">Advanced settings</span>
+                    <span className="text-muted-foreground block text-xs">
+                      Execution limits · autonomy level · sandbox · agent-as-tool · structured output
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    {advancedActiveCount > 0 ? (
+                      <Badge variant="secondary" className="font-normal">
+                        {advancedActiveCount} active
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">defaults</span>
                     )}
-                  </div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={planningEnabled} onChange={(e) => setPlanningEnabled(e.target.checked)} />
-                    <span className="font-mono text-xs">planning: long-horizon plan → act → verify</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={reflectEnabled} onChange={(e) => setReflectEnabled(e.target.checked)} />
-                    <span className="font-mono text-xs">self-reflection with confidence + escalation</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={structuredEnabled} onChange={(e) => setStructuredEnabled(e.target.checked)} />
-                    <span className="font-mono text-xs">structured output (JSON Schema enforced)</span>
-                  </label>
-                  {structuredEnabled && (
-                    <div className="ml-6 space-y-1">
-                      <span className="text-xs text-muted-foreground">Output JSON Schema:</span>
-                      <textarea
-                        className="w-full h-32 text-xs font-mono border rounded p-2 bg-background"
-                        value={outputSchemaText}
-                        onChange={(e) => setOutputSchemaText(e.target.value)}
-                      />
+                    <ChevronDownIcon
+                      className={`text-muted-foreground size-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+                    />
+                  </span>
+                </button>
+                {advancedOpen && (
+                  <div className="space-y-3 border-t border-border p-4">
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div>
+                        <label className="font-mono text-xs text-muted-foreground uppercase">Max Steps</label>
+                        <Input
+                          type="number"
+                          min={3}
+                          max={200}
+                          value={maxSteps}
+                          onChange={(e) => setMaxSteps(parseInt(e.target.value) || 25)}
+                        />
+                      </div>
+                      <div>
+                        <label className="font-mono text-xs text-muted-foreground uppercase">Autonomy Level</label>
+                        <Select
+                          value={autonomyLevel}
+                          items={[
+                            { value: "supervised", label: "Supervised (asks when unsure)" },
+                            { value: "semi_autonomous", label: "Semi-Autonomous" },
+                            { value: "autonomous", label: "Autonomous (plans long-horizon)" },
+                          ]}
+                          onValueChange={(v: any) => setAutonomyLevel(v ?? "supervised")}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="supervised">Supervised (asks when unsure)</SelectItem>
+                            <SelectItem value="semi_autonomous">Semi-Autonomous</SelectItem>
+                            <SelectItem value="autonomous">Autonomous (plans long-horizon)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="font-mono text-xs text-muted-foreground uppercase">Max Reflections</label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={3}
+                          value={maxReflections}
+                          onChange={(e) => setMaxReflections(parseInt(e.target.value) || 0)}
+                        />
+                      </div>
                     </div>
-                  )}
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-mono text-xs">tool_choice:</span>
-                    <select
-                      className="text-xs border rounded px-1 py-0.5 bg-background"
-                      value={toolChoice}
-                      onChange={(e) => setToolChoice(e.target.value)}
-                    >
-                      <option value="auto">auto</option>
-                      <option value="required">required</option>
-                      <option value="none">none</option>
-                    </select>
+                    <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={sandboxEnabled} onChange={(e) => setSandboxEnabled(e.target.checked)} />
+                        <span className="font-mono text-xs">sandbox: code, terminal &amp; files (Docker-isolated)</span>
+                      </label>
+                      <div className="w-full mt-2 border-t pt-3">
+                        <p className="text-sm font-medium mb-1">Agent-as-Tool</p>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          Bind other agents as callable tools. The agent can delegate subtasks to them (max nesting depth 3).
+                        </p>
+                        <div className="max-h-48 overflow-y-auto space-y-1 border rounded p-2 bg-muted/20">
+                          {availableAgents.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">No other agents found. Create agents first.</p>
+                          ) : (
+                            availableAgents.map((a) => (
+                              <label key={a.id} className="flex items-start gap-2 text-xs cursor-pointer hover:bg-muted/50 p-1 rounded">
+                                <input
+                                  type="checkbox"
+                                  className="mt-0.5"
+                                  checked={agentToolIds.includes(a.id)}
+                                  onChange={(e) => {
+                                    setAgentToolIds((prev) =>
+                                      e.target.checked ? [...prev, a.id] : prev.filter((id) => id !== a.id)
+                                    );
+                                  }}
+                                />
+                                <span>
+                                  <strong>{a.name}</strong>
+                                  {a.description && <span className="text-muted-foreground"> — {a.description.slice(0, 80)}</span>}
+                                </span>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                        {agentToolIds.length > 0 && (
+                          <p className="text-xs mt-1 text-success">{agentToolIds.length} agent(s) bound as tools</p>
+                        )}
+                      </div>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={planningEnabled} onChange={(e) => setPlanningEnabled(e.target.checked)} />
+                        <span className="font-mono text-xs">planning: long-horizon plan → act → verify</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={reflectEnabled} onChange={(e) => setReflectEnabled(e.target.checked)} />
+                        <span className="font-mono text-xs">self-reflection with confidence + escalation</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={structuredEnabled} onChange={(e) => setStructuredEnabled(e.target.checked)} />
+                        <span className="font-mono text-xs">structured output (JSON Schema enforced)</span>
+                      </label>
+                      {structuredEnabled && (
+                        <div className="ml-6 space-y-1">
+                          <span className="text-xs text-muted-foreground">Output JSON Schema:</span>
+                          <textarea
+                            className="w-full h-32 text-xs font-mono border rounded p-2 bg-background"
+                            value={outputSchemaText}
+                            onChange={(e) => setOutputSchemaText(e.target.value)}
+                          />
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-mono text-xs">tool_choice:</span>
+                        <select
+                          className="text-xs border rounded px-1 py-0.5 bg-background"
+                          value={toolChoice}
+                          onChange={(e) => setToolChoice(e.target.value)}
+                        >
+                          <option value="auto">auto</option>
+                          <option value="required">required</option>
+                          <option value="none">none</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="space-y-2">

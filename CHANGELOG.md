@@ -1,4 +1,11 @@
 # Changelog
+## [1.0.14] - 2026-10-26
+### Changed
+- Marketplace declutter: all five filters (sort / category / pricing / minimum rating / featured) moved out of the inline toolbar into a single "Filters" button; the popover shows labeled selects with friendly option labels, a featured Switch, and a disabled-when-clean "Clear all filters" action
+- Active filters render as removable chips next to the Filters button, and the button shows an active-count badge; the empty state now keys off the filter count
+- Agent builder: the "Execution & Autonomy" panel (max steps, autonomy level, max reflections, sandbox, planning, reflection, structured output, Agent-as-Tool binding, tool choice) is collapsed behind an "Advanced settings" disclosure by default, with a summary line and an "N active" badge when any non-default feature is in use
+- Builder autonomy select now derives its display label via Base UI `items` instead of showing the raw enum value
+
 ## [1.0.13] - 2026-10-26
 ### Fixed
 - Marketplace leaderboard showed raw creator emails; the endpoint now exposes `owner_display_name` (creator profile display name with email fallback) and the leaderboard row uses it
