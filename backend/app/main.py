@@ -26,6 +26,13 @@ async def lifespan(app: FastAPI):
     logger.info("Starting AI Agent Space API v%s", API_VERSION)
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables ensured")
+    try:
+        from app.core.database import SessionLocal
+        from app.core.init_db import init_db
+        with SessionLocal() as db:
+            init_db(db)
+    except Exception as e:
+        logger.warning("Could not auto-seed default admin: %s", e)
     yield
     # Shutdown
     logger.info("Shutting down AI Agent Space API")

@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     PLATFORM_MIN_PAYOUT_MINOR: int = 50000  # minimum payout amount (minor units, 50000 = ₹500)
     MARKETPLACE_MODERATION: str = "off"     # "off" = publish immediately, "manual" = pending_review queue
 
+    # Default platform admin user (auto-created on startup)
+    FIRST_SUPERUSER_EMAIL: str = "patilom1906@gmail.com"
+    FIRST_SUPERUSER_PASSWORD: str = "Ompatil@1906"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
