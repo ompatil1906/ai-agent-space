@@ -3,9 +3,11 @@
 ### Changed
 - MCP page rebrand: the primary nav label for `/mcp-servers` is now "MCP" and the page title reads "MCP Connections" (was "Tools" / "Tool Connections")
 ### Added
-- Live Web Researcher: demo-ready published agent wired to the official Tavily MCP server (`npx tavily-mcp` via server_id reference). The seed script registers "Tavily Search" (`TAVILY_API_KEY` read from env/backend/.env) and ships the agent with a search-first, cite-sources system prompt; reference config exported to `agents/tavily_research_agent.yaml`
+- Live Web Researcher: demo-ready published agent wired to the official Tavily MCP server — "Tavily Search" is registered by the seed with `logo_slug: tavily` and a search-first, cite-sources system prompt; reference config exported to `agents/tavily_research_agent.yaml`
+- Seed targeting: `--tavily-remote` (hosts Tavily at `https://mcp.tavily.com/mcp/?tavilyApiKey=...` — no Node.js, for the Nodeless Docker backend image) and `--only <agent names>` (seed a subset, e.g. production where local-only servers don't apply); Tavily key read from env/`backend/.env`
 - Tavily brand logo: official `tavily-mark-black.svg` path vendored into `brand-icons.ts` (55×55 viewBox support added to `BrandIcon` + `McpLogo`), catalog entry and the seeded "Tavily Search" server now carry `logo_slug: "tavily"`
 ### Fixed
+- Seed created published agents with `status='draft'` (column default), leaving them invisible on `GET /marketplace/agents` (which also requires `status == "published"`) — the seed now mirrors the platform publish path: `status="published"`, `published_at`, and a `tagline` per agent
 - `mcp_service.discover_tools` crashed with `AttributeError: 'NoneType' object has no attribute 'get'` on tools whose adapter metadata is `None` (first hit by tavily-mcp)
 - MCP stdio spawn failing with `[Errno 2] No such file or directory` (e.g. `npx -y tavily-mcp`) when the backend is launched from a GUI/IDE/non-login shell whose `PATH` lacks Homebrew/nvm Node locations: stdio servers now spawn with a robust child env (conservative variable allowlist + well-known Node bin dirs grafted onto `PATH`, verified healthy under a bare `/usr/bin:/bin` PATH); config `env` values win, and empty-string placeholders no longer clobber an inherited key
 
