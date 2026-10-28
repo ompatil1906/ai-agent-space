@@ -582,7 +582,7 @@ export default function MCPServersPage() {
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12">
       <PageHeader
-        title="Tool Connections"
+        title="MCP Connections"
         description="Give your agents superpowers: connect popular tools in one click, or register your own server. Each connection is tested before it's added, and every agent can reuse it."
       >
         <Button

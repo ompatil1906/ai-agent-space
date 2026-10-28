@@ -46,7 +46,7 @@ const MONOGRAM = "bg-primary text-primary-foreground text-[11px] font-semibold";
 const NAV_LINKS = [
   { href: "/marketplace", label: "Marketplace" },
   { href: "/agents", label: "My Agents" },
-  { href: "/mcp-servers", label: "Tools" },
+  { href: "/mcp-servers", label: "MCP" },
 ] as const;
 
 /** Module-level session cache — the header fetches `/users/me` once per token. */

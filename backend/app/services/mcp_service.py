@@ -130,7 +130,7 @@ class MCPService:
                 "name": tool.name,
                 "description": tool.description or "",
                 "args_schema": schema,
-                "server": getattr(tool, "metadata", {}).get("server") if hasattr(tool, "metadata") else None,
+                "server": (getattr(tool, "metadata", None) or {}).get("server") if hasattr(tool, "metadata") else None,
             })
         return result
 

@@ -49,6 +49,24 @@ from app.services.mcp_service import mcp_service
 OWNER_EMAIL = "patilom1906@gmail.com"
 OWNER_NAME = "Om Patil"
 
+
+def _load_api_key(name: str) -> str:
+    """Read an API key from the environment, falling back to backend/.env."""
+    value = os.environ.get(name, "")
+    if value:
+        return value
+    env_path = os.path.join(BACKEND_DIR, ".env")
+    if os.path.exists(env_path):
+        with open(env_path) as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith(f"{name}="):
+                    return line.split("=", 1)[1].strip().strip("'\"")
+    return ""
+
+
+TAVILY_API_KEY = _load_api_key("TAVILY_API_KEY")
+
 # Free-Tier quota-aware defaults: lite models have the highest daily request
 # allowance, so lite is used for every agent (per-model daily caps exhausted
 # quickly otherwise). "Strong" models are intentionally NOT used.
@@ -112,6 +130,19 @@ MCP_SERVERS = [
             "args": [EXAMPLE_SERVER],
         },
     },
+    {
+        "name": "Tavily Search",
+        "description": "Official Tavily MCP server — LLM-optimized real-time web search, Q&A and news via `npx tavily-mcp` (TAVILY_API_KEY required).",
+        "category": "search",
+        "logo_slug": "tavily",
+        "config": {
+            "name": "tavily",
+            "transport": "stdio",
+            "command": "npx",
+            "args": ["-y", "tavily-mcp"],
+            "env": {"TAVILY_API_KEY": TAVILY_API_KEY},
+        },
+    },
 ]
 
 # Map agent -> MCP servers to attach (by MCP_SERVERS name)
@@ -120,6 +151,7 @@ AGENT_MCP = {
     "Memory Journal Companion": ["Memory Knowledge Graph"],
     "Structured Thinker": ["Sequential Thinking"],
     "Everything Explorer": ["Everything Server"],
+    "Live Web Researcher": ["Tavily Search"],
     "Workspace Research Team": ["Filesystem Workspace", "Memory Knowledge Graph", "Sequential Thinking"],
     "Deep Think Debate": ["Sequential Thinking", "Memory Knowledge Graph"],
     "Consensus Forecaster": ["Filesystem Workspace", "Everything Server"],
@@ -210,6 +242,30 @@ AGENTS = [
         "autonomy_level": "supervised",
         "sandbox_enabled": False,
         "advanced_config": {},
+        "price": 0,
+    },
+    {
+        "name": "Live Web Researcher",
+        "description": "Real-time web research agent powered by the official Tavily MCP server — searches the live web, extracts clean answers with named sources, and cross-checks claims before responding. Ideal demo: ask anything current and watch it search live.",
+        "system_prompt": (
+            "You are Live Web Researcher, an agent with real-time access to the web through the Tavily MCP server "
+            "(tavily-search, tavily-extract, tavily-qna, tavily-news tools). "
+            "For every question about facts, news, prices, people or anything recent — search the live web first; "
+            "never answer purely from memory when a search can verify it. "
+            "Use 2-3 targeted searches for broad questions and cross-check important claims against at least two independent results. "
+            "Answer in a demo-ready format: (1) a one-line direct conclusion, (2) key findings as bullet points, "
+            "(3) numbered sources with titles and URLs. "
+            "If sources disagree, say so explicitly and explain which one is most credible and why. "
+            "Stay crisp: no filler, no invented URLs, no unverified claims."
+        ),
+        "model_name": GEMINI_FAST,
+        "temperature": 0.3,
+        "memory_config": {"enabled": True, "max_messages": 20},
+        "workflow_config": {"type": "single"},
+        "max_steps": 30,
+        "autonomy_level": "supervised",
+        "sandbox_enabled": False,
+        "advanced_config": {"planning_enabled": False},
         "price": 0,
     },
     {
@@ -358,6 +414,9 @@ def ensure_mcp_servers(db, owner: User) -> dict:
                 server.last_status = None
                 server.last_checked_at = None
             server.description = spec["description"]
+            if spec.get("logo_slug") and server.logo_slug != spec["logo_slug"]:
+                server.logo_slug = spec["logo_slug"]
+                db.commit()
             db.commit()
         else:
             server = MCPServer(
@@ -366,6 +425,7 @@ def ensure_mcp_servers(db, owner: User) -> dict:
                 description=spec["description"],
                 config=spec["config"],
                 category=spec.get("category"),
+                logo_slug=spec.get("logo_slug"),
                 is_public=False,
             )
             db.add(server)
@@ -431,6 +491,9 @@ def main() -> None:
     try:
         owner = ensure_user(db, args.email, OWNER_NAME)
         print(f"Seeding for {owner.email} (user_id={owner.id})")
+        if not TAVILY_API_KEY:
+            print("WARNING: TAVILY_API_KEY is not set — the Tavily Search MCP server "
+                  "will register but fail health checks. Add it to backend/.env and re-run.")
 
         registry = ensure_mcp_servers(db, owner)
 

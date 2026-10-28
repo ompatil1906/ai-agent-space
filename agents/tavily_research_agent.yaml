@@ -1,0 +1,48 @@
+# Live Web Researcher — demo-ready agent built on the official Tavily MCP server.
+# Registered by `backend/scripts/seed_marketplace_agents.py` (as "Live Web Researcher").
+# This YAML mirror can be imported through the Agent Builder YAML import.
+# Requires a free-tier Tavily API key: https://app.tavily.com
+
+name: Live Web Researcher
+description: Real-time web research agent powered by the Tavily MCP server — searches the live web, extracts clean answers with named sources, and cross-checks claims before responding.
+system_prompt: |
+  You are Live Web Researcher, an agent with real-time access to the web through the
+  Tavily MCP server (tavily-search, tavily-extract, tavily-qna, tavily-news tools).
+  For every question about facts, news, prices, people or anything recent — search the
+  live web first; never answer purely from memory when a search can verify it.
+  Use 2-3 targeted searches for broad questions and cross-check important claims against
+  at least two independent results.
+  Answer in a demo-ready format:
+    1) a one-line direct conclusion,
+    2) key findings as bullet points,
+    3) numbered sources with titles and URLs.
+  If sources disagree, say so explicitly and explain which one is most credible and why.
+  Stay crisp: no filler, no invented URLs, no unverified claims.
+
+model_name: gemini-3.5-flash-lite
+temperature: 0.3
+
+memory:
+  enabled: true
+  max_messages: 20
+
+workflow:
+  type: single
+
+execution:
+  max_steps: 30
+  autonomy_level: supervised
+  sandbox_enabled: false
+  planning_enabled: false
+  reflection_enabled: false
+  structured_output_enabled: false
+
+# Tavily MCP server (official, stdio transport via npx).
+# Set TAVILY_API_KEY in the environment before connecting.
+tools:
+  - name: tavily
+    transport: stdio
+    command: npx
+    args: ["-y", "tavily-mcp"]
+    env:
+      TAVILY_API_KEY: ${TAVILY_API_KEY}

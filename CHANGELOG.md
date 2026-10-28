@@ -1,4 +1,13 @@
 # Changelog
+## [1.0.15] - 2026-10-28
+### Changed
+- MCP page rebrand: the primary nav label for `/mcp-servers` is now "MCP" and the page title reads "MCP Connections" (was "Tools" / "Tool Connections")
+### Added
+- Live Web Researcher: demo-ready published agent wired to the official Tavily MCP server (`npx tavily-mcp` via server_id reference). The seed script registers "Tavily Search" (`TAVILY_API_KEY` read from env/backend/.env) and ships the agent with a search-first, cite-sources system prompt; reference config exported to `agents/tavily_research_agent.yaml`
+- Tavily brand logo: official `tavily-mark-black.svg` path vendored into `brand-icons.ts` (55×55 viewBox support added to `BrandIcon` + `McpLogo`), catalog entry and the seeded "Tavily Search" server now carry `logo_slug: "tavily"`
+### Fixed
+- `mcp_service.discover_tools` crashed with `AttributeError: 'NoneType' object has no attribute 'get'` on tools whose adapter metadata is `None` (first hit by tavily-mcp)
+
 ## [1.0.14] - 2026-10-26
 ### Changed
 - Marketplace declutter: all five filters (sort / category / pricing / minimum rating / featured) moved out of the inline toolbar into a single "Filters" button; the popover shows labeled selects with friendly option labels, a featured Switch, and a disabled-when-clean "Clear all filters" action

@@ -450,7 +450,7 @@ export const MCP_CATALOG: MCPCatalogEntry[] = [
     command: "npx",
     args: ["-y", "tavily-mcp"],
     requiredEnv: [{ name: "TAVILY_API_KEY", hint: "free tier API key from app.tavily.com" }],
-    icon: { color: "#2caae2" },
+    icon: { slug: "tavily", color: "#1F1E1E" },
     official: true,
   },
   {
