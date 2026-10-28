@@ -7,6 +7,7 @@
 - Tavily brand logo: official `tavily-mark-black.svg` path vendored into `brand-icons.ts` (55×55 viewBox support added to `BrandIcon` + `McpLogo`), catalog entry and the seeded "Tavily Search" server now carry `logo_slug: "tavily"`
 ### Fixed
 - `mcp_service.discover_tools` crashed with `AttributeError: 'NoneType' object has no attribute 'get'` on tools whose adapter metadata is `None` (first hit by tavily-mcp)
+- MCP stdio spawn failing with `[Errno 2] No such file or directory` (e.g. `npx -y tavily-mcp`) when the backend is launched from a GUI/IDE/non-login shell whose `PATH` lacks Homebrew/nvm Node locations: stdio servers now spawn with a robust child env (conservative variable allowlist + well-known Node bin dirs grafted onto `PATH`, verified healthy under a bare `/usr/bin:/bin` PATH); config `env` values win, and empty-string placeholders no longer clobber an inherited key
 
 ## [1.0.14] - 2026-10-26
 ### Changed

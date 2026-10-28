@@ -31,6 +31,7 @@ import asyncio
 import os
 import sys
 from datetime import datetime, timezone
+from typing import Optional, Set
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -66,6 +67,29 @@ def _load_api_key(name: str) -> str:
 
 
 TAVILY_API_KEY = _load_api_key("TAVILY_API_KEY")
+
+
+def apply_tavily_mode(remote: bool) -> None:
+    """Switch the Tavily MCP server spec to the hosted remote MCP.
+
+    The released backend Docker image (python:3.12-slim) ships without
+    Node.js, so `npx -y tavily-mcp` cannot spawn there. The hosted remote
+    endpoint (https://mcp.tavily.com/mcp/) needs no Node — it authenticates
+    with the API key in the URL query.
+    """
+    if not remote:
+        return
+    for spec in MCP_SERVERS:
+        if spec["name"] == "Tavily Search":
+            spec["description"] = (
+                "Official Tavily hosted MCP server (remote HTTP) — real-time web search, extract, "
+                "crawl, map and research. No Node.js required; authenticated via TAVILY_API_KEY in the URL."
+            )
+            spec["config"] = {
+                "name": "tavily",
+                "transport": "streamable_http",
+                "url": f"https://mcp.tavily.com/mcp/?tavilyApiKey={TAVILY_API_KEY}",
+            }
 
 # Free-Tier quota-aware defaults: lite models have the highest daily request
 # allowance, so lite is used for every agent (per-model daily caps exhausted
@@ -161,6 +185,7 @@ AGENT_MCP = {
 AGENTS = [
     {
         "name": "Workspace File Steward",
+        "tagline": "File operations with real disk access via MCP",
         "description": "A file-ops agent with real disk access: reads, writes, edits, searches and organizes files in your AI Agent Space workspace directory using the official MCP filesystem server.",
         "system_prompt": (
             "You are Workspace File Steward, an agent with real access to files in "
@@ -182,6 +207,7 @@ AGENTS = [
     },
     {
         "name": "Memory Journal Companion",
+        "tagline": "A companion that remembers you, via MCP memory",
         "description": "A personal knowledge companion backed by a real MCP knowledge-graph server: it stores entities, relations and observations across conversations, and remembers you over time.",
         "system_prompt": (
             "You are Memory Journal Companion. You maintain a live knowledge graph through the memory MCP server "
@@ -207,6 +233,7 @@ AGENTS = [
     },
     {
         "name": "Structured Thinker",
+        "tagline": "Deliberate, revisable step-by-step reasoning",
         "description": "A deliberate reasoning agent powered by the official MCP sequential-thinking server: it plans, revises and branches its thinking before answering hard questions.",
         "system_prompt": (
             "You are Structured Thinker. For any non-trivial question, use the sequentialthinking MCP tool: "
@@ -226,6 +253,7 @@ AGENTS = [
     },
     {
         "name": "Everything Explorer",
+        "tagline": "A live guided tour of what MCP can do",
         "description": "A hands-on demo agent wired to the official MCP 'Everything' server: exercising echo, structured content, resources and prompt discovery — ideal for exploring what MCP can do.",
         "system_prompt": (
             "You are Everything Explorer, the friendly guided tour of the MCP 'Everything' server. "
@@ -246,6 +274,7 @@ AGENTS = [
     },
     {
         "name": "Live Web Researcher",
+        "tagline": "Real-time web research with cited sources",
         "description": "Real-time web research agent powered by the official Tavily MCP server — searches the live web, extracts clean answers with named sources, and cross-checks claims before responding. Ideal demo: ask anything current and watch it search live.",
         "system_prompt": (
             "You are Live Web Researcher, an agent with real-time access to the web through the Tavily MCP server "
@@ -270,6 +299,7 @@ AGENTS = [
     },
     {
         "name": "Workspace Research Team",
+        "tagline": "Supervisor-led research team with real tools",
         "description": "A supervisor-led research team with real tools: a file analyst (filesystem MCP), a knowledge keeper (memory MCP) and a structured planner (sequential-thinking MCP), coordinated into a single research brief.",
         "system_prompt": (
             "You are the supervisor of a research team. Route work between specialists: "
@@ -309,6 +339,7 @@ AGENTS = [
     },
     {
         "name": "Deep Think Debate",
+        "tagline": "Pro vs con debate with an impartial judge",
         "description": "Pro and con specialists debate with real reasoning tool support (sequential thinking), while the knowledge graph keeps track of recurring arguments — and an impartial judge rules.",
         "system_prompt": (
             "You are the moderator of a rigorous debate. Ensure the advocates ground their cases in step-by-step reasoning "
@@ -345,6 +376,7 @@ AGENTS = [
     },
     {
         "name": "Consensus Forecaster",
+        "tagline": "Parallel analysts reconciled into one outlook",
         "description": "Three independent analysts (pragmatist, risk analyst, strategist) forecast in parallel using real tools, and an ensemble synthesizer reconciles them into a confidence-weighted outlook.",
         "system_prompt": (
             "You are a forecasting ensemble. Each specialist analyses independently with the team's tools; "
@@ -398,10 +430,15 @@ def ensure_user(db, email: str, full_name: str) -> User:
     return user
 
 
-def ensure_mcp_servers(db, owner: User) -> dict:
-    """Register the real MCP servers (by name), refresh configs, health check."""
+def ensure_mcp_servers(db, owner: User, only: Optional[Set[str]] = None) -> dict:
+    """Register the real MCP servers (by name), refresh configs, health check.
+
+    `only` restricts creation/updating to the named servers (used when seeding a
+    subset of agents, e.g. production where only the remote-capable servers apply).
+    """
     registry: dict = {}
-    for spec in MCP_SERVERS:
+    specs = MCP_SERVERS if only is None else [s for s in MCP_SERVERS if s["name"] in only]
+    for spec in specs:
         server = (
             db.query(MCPServer)
             .filter(MCPServer.owner_id == owner.id, MCPServer.name == spec["name"])
@@ -483,7 +520,34 @@ def snapshot_version(db, agent: Agent, owner_id: int, note: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed real Gemini + MCP marketplace agents")
     parser.add_argument("--email", default=OWNER_EMAIL)
+    parser.add_argument(
+        "--tavily-remote",
+        action="store_true",
+        help="Use Tavily's hosted remote MCP (no Node.js) instead of the local stdio npx server — required for the Docker backend image",
+    )
+    parser.add_argument(
+        "--only",
+        nargs="+",
+        help="Seed only these agents (by name) and only the MCP servers they reference — e.g. --only \"Live Web Researcher\"",
+    )
     args = parser.parse_args()
+
+    apply_tavily_mode(args.tavily_remote)
+    if args.tavily_remote and not TAVILY_API_KEY:
+        print("WARNING: --tavily-remote needs TAVILY_API_KEY (hosted endpoint authenticates via the key in the URL); "
+              "it is not set, so the Tavily Search server will register but fail health checks (401).")
+
+    selected = AGENTS
+    if args.only:
+        wanted = {n for n in args.only}
+        selected = [s for s in AGENTS if s["name"] in wanted]
+        missing = wanted - {s["name"] for s in selected}
+        if missing:
+            print(f"WARNING: --only ignored unknown agent name(s): {', '.join(sorted(missing))}")
+        if not selected:
+            print("Nothing to seed.")
+            return
+    needed_servers = {name for spec in selected for name in AGENT_MCP.get(spec["name"], [])}
 
     os.makedirs(WORKSPACE_DIR, exist_ok=True)
 
@@ -495,10 +559,10 @@ def main() -> None:
             print("WARNING: TAVILY_API_KEY is not set — the Tavily Search MCP server "
                   "will register but fail health checks. Add it to backend/.env and re-run.")
 
-        registry = ensure_mcp_servers(db, owner)
+        registry = ensure_mcp_servers(db, owner, only=needed_servers)
 
         created, updated, unchanged = [], [], 0
-        for spec in AGENTS:
+        for spec in selected:
             tools_config = tools_config_for(spec, registry)
             agent = (
                 db.query(Agent)
@@ -507,29 +571,34 @@ def main() -> None:
             )
             if agent:
                 changed = (agent.tools_config or []) != tools_config or agent.model_name != spec["model_name"]
-                for field in ("description", "system_prompt", "model_name", "temperature", "memory_config",
+                for field in ("description", "tagline", "system_prompt", "model_name", "temperature", "memory_config",
                               "workflow_config", "max_steps", "autonomy_level", "advanced_config", "price"):
-                    if getattr(agent, field) != spec[field]:
+                    if getattr(agent, field, None) != spec.get(field):
                         changed = True
-                        setattr(agent, field, spec[field])
+                        setattr(agent, field, spec.get(field))
                 if changed:
                     agent.tools_config = tools_config
                     agent.is_published = True
                     agent.is_public = True
+                    agent.status = "published"
+                    agent.published_at = agent.published_at or datetime.now(timezone.utc)
                     db.commit()
                     db.refresh(agent)
                     snapshot_version(db, agent, owner.id, "Rebuild: Gemini + real MCP servers")
                     updated.append((agent.id, agent.name, agent.price))
                 else:
-                    if not agent.is_published or not agent.is_public:
+                    if not agent.is_published or not agent.is_public or agent.status != "published":
                         agent.is_published = True
                         agent.is_public = True
+                        agent.status = "published"
+                        agent.published_at = agent.published_at or datetime.now(timezone.utc)
                         db.commit()
                     unchanged += 1
                 continue
 
             agent = Agent(
                 name=spec["name"],
+                tagline=spec.get("tagline"),
                 description=spec["description"],
                 system_prompt=spec["system_prompt"],
                 model_name=spec["model_name"],
@@ -543,6 +612,8 @@ def main() -> None:
                 advanced_config=spec["advanced_config"],
                 is_public=True,
                 is_published=True,
+                status="published",
+                published_at=datetime.now(timezone.utc),
                 price=spec["price"],
                 owner_id=owner.id,
             )
@@ -562,10 +633,15 @@ def main() -> None:
         if unchanged:
             print(f"Already up to date ({unchanged})")
 
-        # Final marketplace verification
+        # Final marketplace verification — mirrors what GET /marketplace/agents returns
         published = (
             db.query(Agent)
-            .filter(Agent.owner_id == owner.id, Agent.is_published == True, Agent.is_public == True)  # noqa: E712
+            .filter(
+                Agent.owner_id == owner.id,
+                Agent.is_published == True,  # noqa: E712
+                Agent.is_public == True,  # noqa: E712
+                Agent.status == "published",  # noqa: E711
+            )
             .order_by(Agent.id)
             .all()
         )

@@ -8,8 +8,10 @@ Advanced: validation, richer discovery with schemas, connection health,
 resource listing/reading, and prompt listing.
 """
 from typing import Any, Dict, List, Optional
+import glob
 import logging
 import asyncio
+import os
 
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -25,6 +27,54 @@ logger = logging.getLogger(__name__)
 class MCPService:
     """Service to connect to MCP servers, discover tools/resources/prompts, and convert tools to LangChain tools."""
 
+    # Known homes of Node CLIs (npx, node). The backend can be started from a
+    # GUI, IDE run button, or non-login shell whose PATH misses these, and then
+    # spawning stdio MCP servers (e.g. `npx -y tavily-mcp`) fails with
+    # FileNotFoundError [Errno 2]. We graft these dirs onto the child PATH.
+    @staticmethod
+    def _node_bin_candidates() -> List[str]:
+        candidates = [
+            "/opt/homebrew/bin",  # Apple Silicon Homebrew
+            "/opt/homebrew/sbin",
+            "/usr/local/bin",  # Intel Homebrew / manual installs
+            "/usr/bin",
+            "/bin",
+            os.path.expanduser("~/.volta/bin"),
+            os.path.expanduser("~/.local/bin"),
+        ]
+        candidates += sorted(glob.glob(os.path.expanduser("~/.nvm/versions/node/*/bin")))
+        return candidates
+
+    def _stdio_env(self, provided: Optional[Dict[str, Any]]) -> Dict[str, str]:
+        """Robust environment for spawning stdio MCP servers.
+
+        Inherits a conservative allowlist from the backend process, grafts
+        well-known Node bin directories onto PATH so npx-based servers spawn
+        under any launch context, and lets the user-provided config `env`
+        (e.g. TAVILY_API_KEY) win. An empty-string value never clobbers an
+        inherited variable — so exporting a key before starting the backend
+        still reaches servers whose saved config has an empty placeholder.
+        """
+        env: Dict[str, str] = {}
+        for key in ("HOME", "PATH", "TMPDIR", "TEMP", "SHELL", "TERM", "USER", "LANG"):
+            value = os.environ.get(key)
+            if value:
+                env[key] = value
+
+        path_parts = env.get("PATH", os.defpath).split(os.pathsep)
+        existing = {p.rstrip("/") for p in path_parts if p}
+        for candidate in self._node_bin_candidates():
+            candidate = candidate.rstrip("/")
+            if candidate and os.path.isdir(candidate) and candidate not in existing:
+                path_parts.append(candidate)
+                existing.add(candidate)
+        env["PATH"] = os.pathsep.join(path_parts)
+
+        for key, value in (provided or {}).items():
+            if value or not env.get(key):
+                env[key] = value
+        return env
+
     def _normalize_connection(self, config: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
         """Normalize a user-provided tool/server config into a connection dict."""
         transport = config.get("transport") or config.get("type")
@@ -37,9 +87,8 @@ class MCPService:
                 "transport": "stdio",
                 "command": config["command"],
                 "args": config.get("args", []),
+                "env": self._stdio_env(config.get("env")),
             }
-            if config.get("env"):
-                conn["env"] = config["env"]
             if config.get("cwd"):
                 conn["cwd"] = config["cwd"]
             return name, conn
