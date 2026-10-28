@@ -75,6 +75,25 @@ class MCPService:
                 env[key] = value
         return env
 
+    @staticmethod
+    def _interpolate_env_placeholders(
+        value: Any, env_values: Dict[str, Any]
+    ) -> Any:
+        """Replace `{VAR}` placeholders in URLs/headers with config `env` values.
+
+        Tavily's hosted MCP authenticates via `?tavilyApiKey={TAVILY_API_KEY}`,
+        so a saved config keeps the key in `env` and never hardcodes it in the
+        URL. Placeholders stay as-is when the env value is missing (a deliberate
+        401 beats a silently broken URL), and empty-string values never replace.
+        """
+        if not env_values or not isinstance(value, str):
+            return value
+        interpolated = value
+        for key, val in env_values.items():
+            if key and isinstance(val, str) and val:
+                interpolated = interpolated.replace("{" + key + "}", val)
+        return interpolated
+
     def _normalize_connection(self, config: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
         """Normalize a user-provided tool/server config into a connection dict."""
         transport = config.get("transport") or config.get("type")
@@ -96,23 +115,33 @@ class MCPService:
         if transport in ("streamable_http", "http") or (not transport and "url" in config):
             if "url" not in config:
                 raise ValueError("http/streamable_http transport requires 'url'")
+            env_values = config.get("env") or {}
             conn: StreamableHttpConnection = {
                 "transport": "streamable_http",
-                "url": config["url"],
+                "url": self._interpolate_env_placeholders(config["url"], env_values),
             }
             if config.get("headers"):
-                conn["headers"] = config["headers"]
+                headers = {
+                    key: self._interpolate_env_placeholders(val, env_values)
+                    for key, val in config["headers"].items()
+                }
+                conn["headers"] = headers
             return name, conn
 
         if transport == "sse":
             if "url" not in config:
                 raise ValueError("sse transport requires 'url'")
+            env_values = config.get("env") or {}
             conn: SSEConnection = {
                 "transport": "sse",
-                "url": config["url"],
+                "url": self._interpolate_env_placeholders(config["url"], env_values),
             }
             if config.get("headers"):
-                conn["headers"] = config["headers"]
+                headers = {
+                    key: self._interpolate_env_placeholders(val, env_values)
+                    for key, val in config["headers"].items()
+                }
+                conn["headers"] = headers
             return name, conn
 
         raise ValueError(f"Unsupported MCP transport/config: {config}")

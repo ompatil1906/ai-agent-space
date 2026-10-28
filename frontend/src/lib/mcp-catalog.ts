@@ -445,10 +445,9 @@ export const MCP_CATALOG: MCPCatalogEntry[] = [
     name: "Tavily",
     category: "search",
     description:
-      "LLM-optimized real-time web search API — results, Q&A, and news built for research workflows.",
-    transport: "stdio",
-    command: "npx",
-    args: ["-y", "tavily-mcp"],
+      "Tavily's hosted MCP — LLM-optimized real-time web search, extract, crawl, map and research. Paste your TAVILY_API_KEY below; it's injected into the hosted endpoint at connect time (no Node.js needed).",
+    transport: "streamable_http",
+    url: "https://mcp.tavily.com/mcp/?tavilyApiKey={TAVILY_API_KEY}",
     requiredEnv: [{ name: "TAVILY_API_KEY", hint: "free tier API key from app.tavily.com" }],
     icon: { slug: "tavily", color: "#1F1E1E" },
     official: true,

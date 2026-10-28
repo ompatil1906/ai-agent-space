@@ -10,6 +10,7 @@
 - Seed created published agents with `status='draft'` (column default), leaving them invisible on `GET /marketplace/agents` (which also requires `status == "published"`) — the seed now mirrors the platform publish path: `status="published"`, `published_at`, and a `tagline` per agent
 - `mcp_service.discover_tools` crashed with `AttributeError: 'NoneType' object has no attribute 'get'` on tools whose adapter metadata is `None` (first hit by tavily-mcp)
 - MCP stdio spawn failing with `[Errno 2] No such file or directory` (e.g. `npx -y tavily-mcp`) when the backend is launched from a GUI/IDE/non-login shell whose `PATH` lacks Homebrew/nvm Node locations: stdio servers now spawn with a robust child env (conservative variable allowlist + well-known Node bin dirs grafted onto `PATH`, verified healthy under a bare `/usr/bin:/bin` PATH); config `env` values win, and empty-string placeholders no longer clobber an inherited key
+- Catalog "Connect Tavily" failing with the same `[Errno 2]` on the Nodeless Docker backend image: the catalog entry now points at Tavily's hosted MCP (`https://mcp.tavily.com/mcp/?tavilyApiKey={TAVILY_API_KEY}`); the backend interpolates `{VAR}` placeholders in streamable_http/SSE URLs and header values from the config's `env` at connect time (placeholder kept when the env value is missing — verified healthy with and without a key)
 
 ## [1.0.14] - 2026-10-26
 ### Changed
